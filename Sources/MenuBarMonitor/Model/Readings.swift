@@ -20,17 +20,6 @@ enum MemoryPressure {
         case .critical: "Critical"
         }
     }
-
-    /// Where the pressure gauge's needle points, 0 at the left end to 1 at the right:
-    /// the middle of the level's band. macOS reports three levels, not a number, so the
-    /// needle does not pretend to more precision than that.
-    var gaugeFraction: Double {
-        switch self {
-        case .normal: 1.0 / 6
-        case .warning: 3.0 / 6
-        case .critical: 5.0 / 6
-        }
-    }
 }
 
 struct MemoryReading {

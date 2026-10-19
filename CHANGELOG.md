@@ -6,6 +6,18 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-20
+
+### Changed
+
+- **The dropdowns go back to the look of the first mock-up**, keeping everything they now
+  show: quiet sections divided by hairlines, a heading with the figure that matters
+  most, graphs without frames, and rows of label and value. Each metric keeps one
+  colour — purple for CPU, teal for memory, coral and grey for network — with tones of it
+  for a breakdown, such as the kinds of core or app, wired and compressed memory. The
+  rings, the pressure dial, the mirrored network graph, the status badges, the uppercase
+  titles and the pink, blue, orange and green accents are gone.
+
 ## [1.4.0] — 2026-10-20
 
 ### Added
@@ -107,7 +119,8 @@ never goes online, so unlike Stats it shows no latency or jitter.
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...v1.3.0

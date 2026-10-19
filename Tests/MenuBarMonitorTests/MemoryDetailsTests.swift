@@ -23,14 +23,6 @@ struct MemoryDetailsTests {
         #expect(MemoryReading(total: 0).fraction(of: 5) == 0)
     }
 
-    /// macOS reports three levels, so the needle sits in the middle of each band.
-    @Test("the pressure needle points into the middle of its level's band")
-    func gaugeFraction() {
-        #expect(MemoryPressure.normal.gaugeFraction == 1.0 / 6)
-        #expect(MemoryPressure.warning.gaugeFraction == 0.5)
-        #expect(MemoryPressure.critical.gaugeFraction == 5.0 / 6)
-    }
-
     static let sizes: [(Double, String)] = [
         (0, "0 KB"),
         (524_288, "512 KB"),

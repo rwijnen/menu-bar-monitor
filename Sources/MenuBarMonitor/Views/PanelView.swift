@@ -8,6 +8,12 @@ struct PanelActions {
 
 /// The dropdown shown when one metric's menu bar item is clicked: that metric's
 /// detail, and the app's actions underneath.
+///
+/// Styled after the first mock-up: quiet sections divided by hairlines, each led by a
+/// heading with the figure that matters most, a graph without a frame, then rows of
+/// label and value. One colour per metric — purple for CPU, teal for memory, coral and
+/// grey for network — with tones of it where a breakdown needs more than one, and red
+/// or amber only as warnings.
 struct PanelView: View {
     static let width: CGFloat = 300
 
@@ -20,14 +26,11 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Group {
-                switch metric {
-                case .cpu: cpuSection
-                case .memory: memorySection
-                case .network: networkSection
-                }
+            switch metric {
+            case .cpu: cpuSections
+            case .memory: memorySections
+            case .network: networkSections
             }
-            .sectionPadding()
             Divider()
             footer
         }
@@ -36,263 +39,201 @@ struct PanelView: View {
 
     // MARK: - CPU
 
-    private var cpuSection: some View {
+    @ViewBuilder
+    private var cpuSections: some View {
+        let cpu = store.cpu
         let details = store.cpuDetails
-        let groupFrequencies = details.frequency?.byGroup(store.coreGroups) ?? []
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(Metric.cpu.title, systemImage: Metric.cpu.symbol)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(SystemInfo.chipName ?? "")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        let groups = store.coreGroups
+        PanelSection {
+            Heading(metric: .cpu) {
+                Text(Format.percent(cpu.total))
+                    .foregroundStyle(severity.cpuIsHot ? Palette.critical : .primary)
             }
-
-            cpuGauges(details)
-
-            SectionTitle("Usage history")
             Sparkline(values: store.cpuHistory, maxValue: 100,
                       capacity: MetricsStore.historyLength, color: severity.cpuColor)
-                .frame(height: 48)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.05)))
-            CoreBars(cores: store.cpu.cores, groups: store.coreGroups)
-
-            SectionTitle("Details")
-            VStack(spacing: 3) {
-                DetailRow(label: "System", value: Format.percent(store.cpu.system),
-                          dot: Palette.system)
-                DetailRow(label: "User", value: Format.percent(store.cpu.user),
-                          dot: Palette.cpu)
-                DetailRow(label: "Idle", value: Format.percent(100 - store.cpu.total),
-                          dot: Color.primary.opacity(0.25))
-                if store.coreGroups.count > 1 {
-                    ForEach(Array(store.coreGroups.enumerated()), id: \.offset) { index, group in
-                        DetailRow(label: "\(group.name) cores",
-                                  value: group.usage(in: store.cpu.cores)
-                                    .map(Format.percent) ?? "—",
-                                  dot: Palette.coreGroup(index))
+                .frame(height: 36)
+            CoreBars(cores: cpu.cores, groups: groups)
+                .frame(height: 18)
+            Rows {
+                Row(label: "User / system",
+                    value: "\(Format.percent(cpu.user)) / \(Format.percent(cpu.system))")
+                if groups.count > 1 {
+                    ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                        Row(label: "\(group.name) cores",
+                            value: group.usage(in: cpu.cores).map(Format.percent) ?? "—",
+                            key: Palette.coreGroup(index))
                     }
                 }
-                DetailRow(label: "Uptime", value: Format.uptime(details.uptime))
             }
-
-            SectionTitle("Average load")
-            VStack(spacing: 3) {
-                ForEach(Array(zip(["1 minute", "5 minutes", "15 minutes"],
-                                  details.loadAverage).enumerated()), id: \.offset) { _, row in
-                    DetailRow(label: row.0, value: Format.load(row.1))
-                }
-            }
-
-            SectionTitle("Frequency")
-            VStack(spacing: 3) {
+        }
+        Divider()
+        PanelSection {
+            Rows {
+                Row(label: "Temperature", value: Format.temperature(details.temperature),
+                    valueColor: temperatureColor(details.temperature))
                 // No time at any clock step means the cores were idle, not unknown.
-                DetailRow(label: "All cores",
-                          value: details.frequency.map { $0.allCores.map(Format.megahertz)
-                                                            ?? "Idle" } ?? "—")
-                ForEach(Array(groupFrequencies.enumerated()), id: \.offset) { index, row in
-                    DetailRow(label: "\(row.group.name) cores",
-                              value: row.mhz.map(Format.megahertz) ?? "Idle",
-                              dot: Palette.coreGroup(index))
+                Row(label: "Clock speed",
+                    value: details.frequency.map { $0.allCores.map(Format.megahertz) ?? "Idle" }
+                        ?? "—")
+                let clocks = details.frequency?.byGroup(groups) ?? []
+                ForEach(Array(clocks.enumerated()), id: \.offset) { index, clock in
+                    Row(label: "\(clock.group.name) cores",
+                        value: clock.mhz.map(Format.megahertz) ?? "Idle",
+                        key: Palette.coreGroup(index))
                 }
+                Row(label: "Load average",
+                    value: details.loadAverage.map(Format.load).joined(separator: "  "))
+                Row(label: "Uptime", value: Format.uptime(details.uptime))
+                if let chip = SystemInfo.chipName { Row(label: "Chip", value: chip) }
             }
-
-            SectionTitle("Top processes")
+        }
+        Divider()
+        PanelSection {
+            GroupTitle("Busiest apps")
             processRows(details.processes, measured: details.processesMeasured) {
                 Format.finePercent($0.value)
             }
         }
     }
 
-    private func cpuGauges(_ details: CPUDetails) -> some View {
-        let temperature = details.temperature
-        let hot = settings.colorWarnings && (temperature ?? 0) > 95
-        let warm = settings.colorWarnings && (temperature ?? 0) > 80
-        let frequency = details.frequency
-        // Bottom-aligned, so the three captions share a line under rings of two sizes.
-        return HStack(alignment: .bottom) {
-            RingGauge(segments: [.init(fraction: (temperature ?? 0) / 100,
-                                       color: hot ? Palette.critical
-                                           : warm ? Palette.warning : Palette.gauge)],
-                      value: Format.temperature(temperature), caption: "Temperature")
-            Spacer()
-            RingGauge(segments: [.init(fraction: store.cpu.system / 100, color: Palette.system),
-                                 .init(fraction: store.cpu.user / 100,
-                                       color: severity.cpuIsHot ? Palette.critical
-                                           : Palette.cpu)],
-                      value: Format.percent(store.cpu.total), caption: "Usage",
-                      diameter: 80, lineWidth: 8)
-            Spacer()
-            RingGauge(segments: [.init(fraction: (frequency?.allCores ?? 0)
-                                          / (frequency?.maxMHz ?? 1),
-                                       color: Palette.gauge)],
-                      value: Format.gigahertz(frequency?.allCores),
-                      unit: frequency?.allCores == nil ? nil : "GHz", caption: "Frequency")
-        }
-        .padding(.horizontal, 6)
+    private func temperatureColor(_ celsius: Double?) -> Color? {
+        guard settings.colorWarnings, let celsius else { return nil }
+        return celsius > 95 ? Palette.critical : celsius > 80 ? Palette.warning : nil
     }
 
     // MARK: - Memory
 
-    private var memorySection: some View {
+    @ViewBuilder
+    private var memorySections: some View {
         let memory = store.memory
         let details = store.memoryDetails
         let installed = Int((Double(memory.total) / 1_073_741_824).rounded())
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(Metric.memory.title, systemImage: Metric.memory.symbol)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(installed) GB installed")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        PanelSection {
+            Heading(metric: .memory) {
+                Text("\(Format.gigabytes(memory.used)) / \(installed) GB")
             }
-
-            // Bottom-aligned, so the captions share a line under gauges of two shapes.
-            HStack(alignment: .bottom) {
-                Spacer()
-                PressureGauge(pressure: memory.pressure)
-                Spacer()
-                RingGauge(segments: [
-                              .init(fraction: memory.fraction(of: memory.app),
-                                    color: Palette.appMemory),
-                              .init(fraction: memory.fraction(of: memory.wired),
-                                    color: Palette.wiredMemory),
-                              .init(fraction: memory.fraction(of: memory.compressed),
-                                    color: Palette.compressedMemory),
-                          ],
-                          value: Format.percent(memory.usedFraction * 100), caption: "Used",
-                          diameter: 80, lineWidth: 8)
-                Spacer()
-            }
-
-            SectionTitle("Usage history")
-            Sparkline(values: store.memoryHistory, maxValue: 100,
-                      capacity: MetricsStore.historyLength, color: severity.memoryColor)
-                .frame(height: 48)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.05)))
-
-            SectionTitle("Details")
-            DetailRow(label: "Used", value: Format.memory(memory.used))
             StackedBar(parts: [
                 .init(fraction: memory.fraction(of: memory.app), color: Palette.appMemory),
                 .init(fraction: memory.fraction(of: memory.wired), color: Palette.wiredMemory),
                 .init(fraction: memory.fraction(of: memory.compressed),
                       color: Palette.compressedMemory),
             ])
-            VStack(spacing: 3) {
-                DetailRow(label: "App", value: Format.memory(memory.app), dot: Palette.appMemory)
-                DetailRow(label: "Wired", value: Format.memory(memory.wired),
-                          dot: Palette.wiredMemory)
-                DetailRow(label: "Compressed", value: Format.memory(memory.compressed),
-                          dot: Palette.compressedMemory)
-                DetailRow(label: "Free", value: Format.memory(memory.free),
-                          dot: Color.primary.opacity(0.25))
-                DetailRow(label: "Swap", value: Format.memory(memory.swapUsed))
+            Sparkline(values: store.memoryHistory, maxValue: 100,
+                      capacity: MetricsStore.historyLength, color: severity.memoryColor)
+                .frame(height: 36)
+            Rows {
+                Row(label: "Pressure", value: memory.pressure.title,
+                    valueColor: severity.memoryWarningColor)
+                Row(label: "App", value: Format.memory(memory.app), key: Palette.appMemory)
+                Row(label: "Wired", value: Format.memory(memory.wired),
+                    key: Palette.wiredMemory)
+                Row(label: "Compressed", value: Format.memory(memory.compressed),
+                    key: Palette.compressedMemory)
+                Row(label: "Free", value: Format.memory(memory.free))
+                Row(label: "Swap used", value: Format.memory(memory.swapUsed))
             }
-
-            SectionTitle("Top processes")
+        }
+        Divider()
+        PanelSection {
+            GroupTitle("Busiest apps")
             processRows(details.processes, measured: details.processesMeasured) {
                 Format.memory($0.value)
             }
         }
     }
 
-    /// Always the same number of rows, so a dropdown keeps its height while the list
-    /// arrives and as it changes.
-    private func processRows(_ apps: [AppUsage], measured: Bool,
-                             value: @escaping (AppUsage) -> String) -> some View {
-        VStack(spacing: 3) {
-            ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
-                if index < apps.count {
-                    AppRow(app: apps[index], value: value(apps[index]))
-                } else {
-                    DetailRow(label: index == 0 && !measured ? "Measuring…" : " ", value: "")
-                }
-            }
-        }
-    }
-
     // MARK: - Network
 
-    private var networkSection: some View {
+    @ViewBuilder
+    private var networkSections: some View {
         let network = store.network
         let details = store.networkDetails
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(Metric.network.title, systemImage: Metric.network.symbol)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let interface = network.interfaceName {
-                    Text("\(network.interfaceDisplayName ?? interface) (\(interface))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+        PanelSection {
+            Heading(metric: .network) {
+                HStack(spacing: 8) {
+                    rate("↓", network.downloadPerSecond, color: Palette.download)
+                    rate("↑", network.uploadPerSecond, color: Palette.upload)
                 }
+                .font(.system(size: 14, weight: .medium).monospacedDigit())
             }
-
+            ZStack {
+                let scale = store.networkScale(last: MetricsStore.historyLength)
+                Sparkline(values: store.downloadHistory, maxValue: scale,
+                          capacity: MetricsStore.historyLength, color: Palette.download)
+                Sparkline(values: store.uploadHistory, maxValue: scale,
+                          capacity: MetricsStore.historyLength, color: Palette.upload,
+                          filled: false)
+            }
+            .frame(height: 36)
+            Rows {
+                if let interface = network.interfaceName {
+                    Row(label: "\(network.interfaceDisplayName ?? interface) (\(interface))",
+                        value: network.ipAddress ?? "No IPv4 address")
+                } else {
+                    Row(label: "Not connected", value: "")
+                }
+                Row(label: "Today", value: "↓ \(Format.traffic(store.downloadedToday))  "
+                        + "↑ \(Format.traffic(store.uploadedToday))")
+                Row(label: "Since the Mac started",
+                    value: "↓ \(Format.traffic(network.totalDownloaded))  "
+                        + "↑ \(Format.traffic(network.totalUploaded))")
+            }
+        }
+        Divider()
+        PanelSection {
+            GroupTitle("Connection history")
+            ConnectivityStrip(entries: store.connectionHistory.entries,
+                              capacity: ConnectionHistory.length)
             HStack {
+                let span = Double(ConnectionHistory.length) * settings.refreshInterval
+                Text("\(Format.uptime(span)) ago")
                 Spacer()
-                bigRate(network.downloadPerSecond, label: "Download", color: Palette.download)
-                Spacer()
-                bigRate(network.uploadPerSecond, label: "Upload", color: Palette.upload)
-                Spacer()
+                Text("Now")
             }
-
-            SectionTitle("Usage history")
-            MirroredGraph(up: store.uploadHistory, down: store.downloadHistory,
-                          capacity: MetricsStore.historyLength)
-                .frame(height: 64)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.05)))
-
-            SectionTitle("Connectivity history")
-            ConnectivityGrid(entries: store.connectionHistory.entries,
-                             capacity: ConnectionHistory.length)
-
-            SectionTitle("Interface")
-            VStack(spacing: 3) {
-                DetailRow(label: "Downloaded today", value: Format.traffic(store.downloadedToday),
-                          dot: Palette.download)
-                DetailRow(label: "Uploaded today", value: Format.traffic(store.uploadedToday),
-                          dot: Palette.upload)
-                DetailRow(label: "Since the Mac started",
-                          value: "↓ \(Format.traffic(network.totalDownloaded))  "
-                              + "↑ \(Format.traffic(network.totalUploaded))")
-                StatusRow(label: "Status", isUp: network.interfaceName != nil && network.isUp)
-                StatusRow(label: "Connection", isUp: details.isConnected,
-                          upText: details.connectionType.map { "Via \($0)" } ?? "Connected",
-                          downText: "None")
-                DetailRow(label: "Hardware address", value: network.hardwareAddress ?? "—")
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            Rows {
+                Row(label: "Connection",
+                    value: details.isConnected
+                        ? details.connectionType.map { "Via \($0)" } ?? "Connected" : "None",
+                    valueColor: details.isConnected ? nil : Palette.critical)
+                let isUp = network.interfaceName != nil && network.isUp
+                Row(label: "Interface", value: isUp ? "Up" : "Down",
+                    valueColor: isUp ? nil : Palette.critical)
+                Row(label: "Hardware address", value: network.hardwareAddress ?? "—")
                 wifiRow(details.wifi)
             }
-
-            SectionTitle("Address")
-            DetailRow(label: "Local IP", value: network.ipAddress ?? "None")
-
-            SectionTitle("Top processes")
-            networkProcessRows(details)
+        }
+        Divider()
+        PanelSection {
+            HStack {
+                GroupTitle("Busiest apps")
+                Spacer()
+                Text("↓").foregroundStyle(Palette.download)
+                    .frame(width: 64, alignment: .trailing)
+                Text("↑").foregroundStyle(Palette.upload)
+                    .frame(width: 64, alignment: .trailing)
+            }
+            .font(.system(size: 11, weight: .medium))
+            Rows {
+                ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
+                    if index < details.processes.count {
+                        NetworkAppRow(app: details.processes[index])
+                    } else {
+                        Row(label: index > 0 ? " "
+                                : details.processesMeasured ? "No app is using the network"
+                                : "Measuring…",
+                            value: "")
+                    }
+                }
+            }
         }
     }
 
-    private func bigRate(_ bytesPerSecond: Double, label: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(Format.rate(bytesPerSecond))
-                .font(.system(size: 20, weight: .semibold).monospacedDigit())
-            HStack(spacing: 5) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(color)
-                    .frame(width: 8, height: 8)
-                Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
+    private func rate(_ arrow: String, _ value: Double, color: Color) -> some View {
+        HStack(spacing: 2) {
+            Text(arrow).foregroundStyle(color)
+            Text(Format.rate(value))
         }
     }
 
@@ -300,37 +241,36 @@ struct PanelView: View {
     private func wifiRow(_ wifi: WiFiName.State) -> some View {
         switch wifi {
         case .name(let name):
-            DetailRow(label: "Wi-Fi network", value: name)
+            Row(label: "Wi-Fi network", value: name)
         case .notOnWiFi:
             EmptyView()
         case .denied:
-            DetailRow(label: "Wi-Fi network", value: "Location Services off")
+            Row(label: "Wi-Fi network", value: "Location Services off")
         case .notAsked:
             HStack {
                 Text("Wi-Fi network").foregroundStyle(.secondary)
                 Spacer()
                 Button("Show the name…") { store.requestWiFiNameAccess() }
-                    .controlSize(.small)
+                    .buttonStyle(.link)
             }
             .font(.system(size: 12))
         }
     }
 
-    private func networkProcessRows(_ details: NetworkDetails) -> some View {
-        VStack(spacing: 3) {
-            HStack {
-                Spacer()
-                Text("↓").foregroundStyle(Palette.download).frame(width: 64, alignment: .trailing)
-                Text("↑").foregroundStyle(Palette.upload).frame(width: 64, alignment: .trailing)
-            }
-            .font(.system(size: 11, weight: .semibold))
+    // MARK: - Shared
+
+    /// Always the same number of rows, so a dropdown keeps its height while the list
+    /// arrives and as it changes.
+    private func processRows(_ apps: [AppUsage], measured: Bool,
+                             value: @escaping (AppUsage) -> String) -> some View {
+        Rows {
             ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
-                if index < details.processes.count {
-                    NetworkAppRow(app: details.processes[index])
+                if index < apps.count {
+                    AppRow(icon: apps[index].icon, name: apps[index].name) {
+                        Text(value(apps[index]))
+                    }
                 } else {
-                    let label = index > 0 ? " "
-                        : details.processesMeasured ? "No app is using the network" : "Measuring…"
-                    DetailRow(label: label, value: "")
+                    Row(label: index == 0 && !measured ? "Measuring…" : " ", value: "")
                 }
             }
         }
@@ -351,57 +291,67 @@ struct PanelView: View {
     }
 }
 
-private extension View {
-    func sectionPadding() -> some View {
-        padding(.horizontal, 14).padding(.vertical, 10)
+// MARK: - Pieces
+
+/// One section between hairlines, with the mock-up's padding.
+private struct PanelSection<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) { content }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
     }
 }
 
-private struct SectionHeader<Value: View>: View {
-    let title: String
-    let symbol: String
+/// The metric's name on the left and its headline figure on the right.
+private struct Heading<Value: View>: View {
+    let metric: Metric
     @ViewBuilder let value: Value
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Label(title, systemImage: symbol)
+            Label(metric.title, systemImage: metric.symbol)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
             Spacer()
-            value
-                .font(.system(size: 18, weight: .semibold).monospacedDigit())
+            value.font(.system(size: 18, weight: .medium).monospacedDigit())
         }
     }
 }
 
-private struct SectionTitle: View {
+/// A quiet name for a group of rows, in sentence case like everything else.
+private struct GroupTitle: View {
     let title: String
 
     init(_ title: String) { self.title = title }
 
     var body: some View {
         Text(title)
-            .font(.system(size: 10, weight: .semibold))
-            .textCase(.uppercase)
-            .tracking(0.6)
+            .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.secondary)
-            .padding(.top, 2)
     }
 }
 
-private struct DetailRow: View {
+private struct Rows<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 3) { content }
+    }
+}
+
+private struct Row: View {
     let label: String
     let value: String
     var valueColor: Color?
-    /// A colour key, matching the gauge or bars the row describes.
-    var dot: Color?
+    /// A small colour key, matching the bar or graph part the row describes.
+    var key: Color?
 
     var body: some View {
         HStack(spacing: 6) {
-            if let dot {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(dot)
-                    .frame(width: 8, height: 8)
+            if let key {
+                Circle().fill(key).frame(width: 6, height: 6)
             }
             Text(label).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
@@ -411,14 +361,15 @@ private struct DetailRow: View {
     }
 }
 
-private struct AppRow: View {
-    let app: AppUsage
-    let value: String
+private struct AppRow<Values: View>: View {
+    let icon: NSImage?
+    let name: String
+    @ViewBuilder let values: Values
 
     var body: some View {
         HStack(spacing: 6) {
             Group {
-                if let icon = app.icon {
+                if let icon {
                     Image(nsImage: icon).resizable()
                 } else {
                     Image(systemName: "gearshape.2").resizable().scaledToFit()
@@ -426,11 +377,23 @@ private struct AppRow: View {
                 }
             }
             .frame(width: 14, height: 14)
-            Text(app.name).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            Text(name).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             Spacer()
-            Text(value).monospacedDigit()
+            values
         }
+        .monospacedDigit()
         .font(.system(size: 12))
+    }
+}
+
+private struct NetworkAppRow: View {
+    let app: NetworkAppUsage
+
+    var body: some View {
+        AppRow(icon: app.icon, name: app.name) {
+            Text(Format.rate(app.downloadPerSecond)).frame(width: 64, alignment: .trailing)
+            Text(Format.rate(app.uploadPerSecond)).frame(width: 64, alignment: .trailing)
+        }
     }
 }
 
@@ -456,50 +419,5 @@ private struct FooterButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-    }
-}
-
-private struct StatusRow: View {
-    let label: String
-    let isUp: Bool
-    var upText = "Up"
-    var downText = "Down"
-
-    var body: some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            Text(isUp ? upText : downText)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(isUp ? Palette.normal : Palette.critical))
-        }
-        .font(.system(size: 12))
-    }
-}
-
-private struct NetworkAppRow: View {
-    let app: NetworkAppUsage
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Group {
-                if let icon = app.icon {
-                    Image(nsImage: icon).resizable()
-                } else {
-                    Image(systemName: "gearshape.2").resizable().scaledToFit()
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 14, height: 14)
-            Text(app.name).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            Spacer()
-            Text(Format.rate(app.downloadPerSecond)).frame(width: 64, alignment: .trailing)
-            Text(Format.rate(app.uploadPerSecond)).frame(width: 64, alignment: .trailing)
-        }
-        .monospacedDigit()
-        .font(.system(size: 12))
     }
 }

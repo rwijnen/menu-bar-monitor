@@ -82,7 +82,7 @@ Sources/MenuBarMonitor/
     PanelView         one metric's dropdown
     SettingsView      the settings window, with a live preview of each style
     Sparkline         the graph shape, the mini bar and the memory bar
-    Gauges            ring gauges, per-core bars, the pressure dial and the stacked bar
+    Bars              per-core bars, the stacked memory bar and the connection strip
     Theme             the palette and the warning colours
   App/
     main              starts the app, or a developer command
@@ -224,8 +224,11 @@ value is stored on disk, so never rename one later. The compiler then points at 
 themselves. Check the item's width against the others: the menu bar hides items that do
 not fit, and on a notched MacBook that happens quickly.
 
-**Change a colour.** `Palette` in `Views/Theme.swift`. Every colour has to work on a light
-and a dark menu bar and dropdown, so check both snapshots.
+**Change a colour.** `Palette` in `Views/Theme.swift`. There is one colour per metric —
+purple for CPU, teal for memory, coral and grey for network — and a breakdown uses tones
+of its metric's colour rather than new ones; red and amber are kept for warnings. Every
+colour has to work on a light and a dark menu bar and dropdown, so check both snapshots,
+and in the running app check dark mode over a bright window.
 
 **Touch the icon.** `Tools/make-icon.swift`, pure Core Graphics. Palette constants are at
 the top. Always check the 16 and 32 pixel variants: below 64 pixels the drawing takes a

@@ -8,23 +8,27 @@ enum Palette {
     static let warning = Color(hex: 0xEF9F27)
     static let critical = Color(hex: 0xE24B4A)
 
-    // The CPU dropdown's own colours: time spent in the kernel, the gauges that are not
-    // usage, and one colour per kind of core, slowest first.
-    static let system = Color(hex: 0xD4537E)
-    static let gauge = Color(hex: 0x378ADD)
-    static let coreGroups = [cpu, Color(hex: 0xEF9F27), Color(hex: 0x1D9E75)]
+    /// Tones of the CPU's colour for the kinds of core, slowest first.
+    static let coreGroups = [Color(hex: 0xAFA9EC), cpu, Color(hex: 0x534AB7)]
 
     static func coreGroup(_ index: Int) -> Color { coreGroups[index % coreGroups.count] }
 
-    // The memory dropdown's: the breakdown of what is used, and the pressure dial's
-    // calm band.
+    /// Tones of memory's colour for its breakdown. Compressed takes the darkest tone in
+    /// light mode and the lightest in dark, so it stands apart from the track in both.
     static let appMemory = memory
-    static let wiredMemory = gauge
-    static let compressedMemory = system
-    static let normal = Color(hex: 0x639922)
+    static let wiredMemory = Color(hex: 0x5DCAA5)
+    static let compressedMemory = Color(light: 0x085041, dark: 0x9FE1CB)
 }
 
 extension Color {
+    /// A colour with one value in light mode and another in dark.
+    init(light: UInt32, dark: UInt32) {
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(Color(hex: isDark ? dark : light))
+        })
+    }
+
     init(hex: UInt32) {
         self.init(.sRGB,
                   red: Double((hex >> 16) & 0xFF) / 255,

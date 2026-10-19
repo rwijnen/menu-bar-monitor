@@ -83,6 +83,12 @@ each has an autosave name so a position the user chose survives a relaunch.
 from the menu bar. The panel drops straight down like a menu, which is what the item looks
 like it should do.
 
+**One colour per metric.** The dropdowns briefly took Stats' look — rings, a pressure
+dial, badges, and pink, blue, orange and green beside each metric's own colour. It read
+as busy, and the first mock-up's quieter style was preferred: one colour per metric, tones
+of it for a breakdown, red and amber only as warnings, and figures in rows rather than
+dials. Keep new details in that style.
+
 **The popover material, not Liquid Glass.** The dropdowns started out on macOS 26's
 regular glass (`NSGlassEffectView`). It lets so much of what is behind it through that over
 a bright window it stayed light grey in dark mode, while the text stayed white, and the
