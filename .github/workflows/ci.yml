@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A PR that changes the app is a release, or merging it publishes nothing — the Release
+  # workflow only acts on a version without a tag. Fails the PR when the bump or its
+  # CHANGELOG heading is missing. Docs, tests and CI changes are exempt.
+  version-bump:
+    name: Version bump
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    steps:
+      # Full history and tags: the check diffs against the base branch and refuses a
+      # version that is already tagged.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          fetch-depth: 0
+
+      - name: Check the PR bumps the version when it changes the app
+        run: .github/scripts/check-version-bump.sh "origin/${{ github.base_ref }}"
+
+  build-and-test:
+    name: Build and test
+    # macOS 26: its SDK is the first with NSGlassEffectView, so this is the build that
+    # ships the glass dropdown. An older SDK would compile the fallback silently.
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          sw_vers
+
+      - name: Build
+        run: swift build -c release --product MenuBarMonitor
+
+      # The sampler suite reads this runner's own counters, so it checks shape and
+      # consistency rather than values.
+      - name: Test
+        run: swift test
+
+      - name: Assemble the app bundle
+        run: ./build.sh
+
+      - name: Check the bundle
+        run: |
+          test -x build/MenuBarMonitor.app/Contents/MacOS/MenuBarMonitor
+          test -f build/MenuBarMonitor.app/Contents/Resources/AppIcon.icns
+          plutil -lint build/MenuBarMonitor.app/Contents/Info.plist
+          test "$(plutil -extract LSUIElement raw build/MenuBarMonitor.app/Contents/Info.plist)" = true
+          codesign --verify --verbose=2 build/MenuBarMonitor.app
+
+      # The bundled executable, not the test build: it must start, take real readings
+      # and exit, which is the closest a runner gets to opening the menu bar item.
+      - name: Smoke test the readings
+        run: build/MenuBarMonitor.app/Contents/MacOS/MenuBarMonitor --sample
+
+      - name: Package for download
+        run: ditto -c -k --keepParent build/MenuBarMonitor.app MenuBarMonitor.app.zip
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: MenuBarMonitor.app
+          path: MenuBarMonitor.app.zip
+          if-no-files-found: error

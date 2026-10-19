@@ -1,0 +1,80 @@
+name: Bug report
+description: A number was wrong, something did not show, or the app misbehaved.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a reading looks wrong, the most useful report puts it next to what macOS
+        itself says — `top -l 2`, `vm_stat`, `sysctl vm.swapusage` or Activity Monitor —
+        taken at the same moment.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      placeholder: |
+        1. Switch the style to …
+        2. Open the dropdown while …
+        3. The network rate shows …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - A reading (CPU, memory, network or the busiest apps)
+        - The menu bar item
+        - The dropdown
+        - Settings
+        - Launch at login
+        - Building or installing
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Output of --sample
+      description: >
+        Run `/Applications/MenuBarMonitor.app/Contents/MacOS/MenuBarMonitor --sample` and
+        paste what it prints. It includes your network interface's local address; remove
+        it if you would rather not share it.
+      render: text
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "e.g. 26.1, or the output of sw_vers -productVersion"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mac
+    attributes:
+      label: Mac
+      options:
+        - Apple silicon
+        - Intel
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Menu Bar Monitor version
+      description: The release you downloaded, or the tag/commit you built.
+      placeholder: "e.g. 1.0.0, or main @ abc1234"
+    validations:
+      required: true

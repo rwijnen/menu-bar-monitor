@@ -1,0 +1,166 @@
+import AppKit
+import SwiftUI
+
+/// Command-line helpers for checking readings and layouts without clicking
+/// through the menu bar, and without screen-recording permission:
+///
+///   MenuBarMonitor --sample            prints a few live readings and exits
+///   MenuBarMonitor --snapshot <dir>    renders every view to PNG, from demo data
+@MainActor
+enum DevTools {
+    static func runIfRequested() -> Bool {
+        let args = CommandLine.arguments
+        if args.contains("--sample") {
+            printSamples()
+            return true
+        }
+        if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
+            snapshot(to: URL(fileURLWithPath: args[index + 1], isDirectory: true))
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Live readings
+
+    /// For comparing against `top -l 2`, `vm_stat`, `sysctl vm.swapusage` and
+    /// `netstat -ib`. The first round has no CPU or network figures yet, since
+    /// both are differences between two readings.
+    private static func printSamples() {
+        let store = MetricsStore(settings: AppSettings())
+        for _ in 0..<4 {
+            store.sample()
+            let cpu = store.cpu, memory = store.memory, network = store.network
+            print("""
+            cpu \(Format.percent(cpu.total)) (user \(Format.percent(cpu.user)), \
+            system \(Format.percent(cpu.system)), \(cpu.coreCount) cores)
+            mem \(Format.gigabytes(memory.used))/\(Format.gigabytes(memory.total)) GB  \
+            app \(Format.gigabytes(memory.app)) wired \(Format.gigabytes(memory.wired)) \
+            compressed \(Format.gigabytes(memory.compressed)) \
+            swap \(Format.gigabytes(memory.swapUsed)) pressure \(memory.pressure.title)
+            net \(network.interfaceDisplayName ?? "-") (\(network.interfaceName ?? "-")) \
+            \(network.ipAddress ?? "-")  ↓ \(Format.rate(network.downloadPerSecond)) \
+            ↑ \(Format.rate(network.uploadPerSecond))
+            apps \(store.topApps.map { "\($0.name) \(Format.finePercent($0.cpu))" }
+                .joined(separator: ", "))
+            ---
+            """)
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+
+    // MARK: - Screenshots
+
+    /// Writes the images used in the README. They come from demo data rather than
+    /// this machine's, so they are the same wherever they are generated and show
+    /// nobody's real address or apps.
+    private static func snapshot(to directory: URL) {
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true)
+        let suite = "MenuBarMonitor.snapshot"
+        UserDefaults().removePersistentDomain(forName: suite)
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = demoStore(defaults: defaults)
+        let settings = AppSettings(defaults: defaults)
+
+        let actions = PanelActions(openSettings: {}, openActivityMonitor: {}, quit: {})
+        for scheme in [ColorScheme.light, .dark] {
+            let name = scheme == .light ? "light" : "dark"
+            let appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)!
+            // Roughly the menu bar's own tint over a neutral wallpaper.
+            let menuBar = scheme == .light ? Color(white: 0.93) : Color(white: 0.16)
+            for style in MenuBarStyle.allCases {
+                let file = "menubar-\(style.rawValue)-\(name).png"
+                render(MenuBarLabel(store: store, settings: settings, style: style).padding(4),
+                       scheme: scheme, background: menuBar,
+                       to: directory.appendingPathComponent(file))
+            }
+            let dropdown = PanelView(store: store, settings: settings, actions: actions)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            renderAppKit(dropdown, appearance: appearance,
+                         to: directory.appendingPathComponent("dropdown-\(name).png"))
+            renderAppKit(SettingsView(settings: settings, store: store), appearance: appearance,
+                         to: directory.appendingPathComponent("settings-\(name).png"))
+        }
+        UserDefaults().removePersistentDomain(forName: suite)
+        print("Snapshots written to \(directory.path)")
+    }
+
+    /// A minute of made-up readings: moderate CPU, memory at about 60% with no
+    /// pressure, and a download in progress.
+    private static func demoStore(defaults: UserDefaults) -> MetricsStore {
+        let now = Date()
+        let gib: UInt64 = 1_073_741_824
+        defaults.set(MetricsStore.dayKey(for: now), forKey: "trafficDay")
+        defaults.set(2.1e9, forKey: "downloadedToday")
+        defaults.set(3.4e8, forKey: "uploadedToday")
+        let store = MetricsStore(settings: AppSettings(defaults: defaults), defaults: defaults,
+                                 now: now)
+
+        let apps = [("Xcode", "/Applications/Xcode.app", 12.4),
+                    ("Safari", "/Applications/Safari.app", 4.1),
+                    ("Mail", "/System/Applications/Mail.app", 1.2)]
+            .map { name, path, cpu in
+                AppUsage(id: path, name: name,
+                         icon: NSWorkspace.shared.icon(forFile: path), cpu: cpu)
+            }
+
+        for index in 0..<MetricsStore.historyLength {
+            let t = Double(index)
+            let cpu = 24 + 8 * sin(t / 4) + 4 * sin(t * 1.7)
+            let used = UInt64((0.61 + 0.015 * sin(t / 9)) * Double(16 * gib))
+            let down = max(0, 1_100_000 + 600_000 * sin(t / 3) + 250_000 * sin(t * 2.3))
+            let up = max(0, 110_000 + 50_000 * sin(t / 2.5 + 1))
+            store.record(
+                cpu: CPUReading(total: cpu, user: cpu * 0.62, system: cpu * 0.38,
+                                coreCount: 10),
+                memory: MemoryReading(total: 16 * gib, used: used, app: used - 4 * gib,
+                                      wired: 2 * gib + gib / 5,
+                                      compressed: 1 * gib + gib * 4 / 5,
+                                      swapUsed: gib * 2 / 5, pressure: .normal),
+                network: NetworkReading(downloadPerSecond: down, uploadPerSecond: up,
+                                        interfaceName: "en0", interfaceDisplayName: "Wi-Fi",
+                                        ipAddress: "192.168.1.20"),
+                apps: apps, now: now)
+        }
+        return store
+    }
+
+    private static func render<V: View>(_ view: V, scheme: ColorScheme, background: Color,
+                                        to url: URL) {
+        let content = view.background(background).environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 2
+        guard let image = renderer.cgImage else { return }
+        write(NSBitmapImageRep(cgImage: image), to: url)
+    }
+
+    /// Forms use AppKit controls, which ImageRenderer cannot draw, so these go
+    /// through an offscreen window instead.
+    ///
+    /// The dropdown goes this way too, on a plain background rather than in its
+    /// glass panel: an offscreen capture of the glass draws large semibold text
+    /// almost black in dark mode, which the same view on a plain background does
+    /// not. The glass needs what is behind it on screen, and offscreen there is
+    /// nothing there.
+    private static func renderAppKit<V: View>(_ view: V, appearance: NSAppearance,
+                                              to url: URL) {
+        let hosting = NSHostingView(rootView: view)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = appearance
+        window.contentView = hosting
+        hosting.frame.size = hosting.fittingSize
+        hosting.layoutSubtreeIfNeeded()
+        hosting.display()
+        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds)
+        else { return }
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        write(rep, to: url)
+    }
+
+    private static func write(_ rep: NSBitmapImageRep, to url: URL) {
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+}

@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something Menu Bar Monitor should show or do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Menu Bar Monitor deliberately **never goes online**, **needs no privileges**, and
+        stays **lighter than what it measures**. Suggestions that keep to that are much
+        more likely to land — a metric that needs root, or a feature that opens a
+        connection, will not.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to see or do?
+      description: The situation you are in, rather than the feature you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead

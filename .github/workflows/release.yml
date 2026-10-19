@@ -1,0 +1,114 @@
+name: Release
+
+# A release follows the version in the bundle, not a tag typed by hand. Landing a
+# version bump on main publishes it; everything else on main publishes nothing, so a
+# README fix does not become a version. Tag pushes still work for cutting one by hand.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-26
+
+    steps:
+      # Pinned by commit, with the version beside it. A floating major tag can move to a
+      # release that needs a runtime the runners no longer provide, and the run that
+      # breaks is this one — the one nobody sees until they go looking for the zip.
+      #
+      # The whole history, because whether this version has already been released is the
+      # question this job exists to answer and a shallow clone has no tags to answer it.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          fetch-depth: 0
+
+      - name: Work out whether there is a release to make
+        id: decide
+        run: |
+          bundled=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            Resources/Info.plist)
+          echo "version=$bundled" >> "$GITHUB_OUTPUT"
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # Cut by hand. Nothing else checks that the bundle agrees with the tag, and
+            # without this, pushing v1.2.0 over a stale Info.plist ships an app that
+            # reports 1.1.0.
+            tagged="${GITHUB_REF_NAME#v}"
+            echo "tag=$tagged  Info.plist=$bundled"
+            if [[ "$tagged" != "$bundled" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match Info.plist ($bundled). Bump Resources/Info.plist, or retag."
+              exit 1
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # On main: publish only a version that has not been published before, so the
+          # bump is what ships a release and everything else lands quietly.
+          if git rev-parse --verify --quiet "refs/tags/v$bundled" > /dev/null; then
+            echo "v$bundled is already released. Nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Info.plist says $bundled and there is no v$bundled yet — publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The changelog must mention this version
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          if ! grep -q "^## \[${{ steps.decide.outputs.version }}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no heading for ${{ steps.decide.outputs.version }}."
+            exit 1
+          fi
+
+      - name: Build the app
+        if: steps.decide.outputs.publish == 'true'
+        run: ./build.sh
+
+      - name: Test before publishing
+        if: steps.decide.outputs.publish == 'true'
+        run: swift test
+
+      - name: Package
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          ditto -c -k --keepParent build/MenuBarMonitor.app MenuBarMonitor.app.zip
+          shasum -a 256 MenuBarMonitor.app.zip | tee MenuBarMonitor.app.zip.sha256
+
+      - name: Publish the release
+        if: steps.decide.outputs.publish == 'true'
+        uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231  # v3.0.3
+        with:
+          # Named rather than taken from the ref, since on main there is no tag yet —
+          # the action creates it at this commit.
+          tag_name: v${{ steps.decide.outputs.version }}
+          name: Menu Bar Monitor ${{ steps.decide.outputs.version }}
+          files: |
+            MenuBarMonitor.app.zip
+            MenuBarMonitor.app.zip.sha256
+          generate_release_notes: true
+          body: |
+            ## Installing this build
+
+            This app is **ad-hoc signed, not notarised** — there is no paid Apple
+            Developer certificate behind it. macOS will therefore refuse to open it on
+            the first try. Either remove the download quarantine:
+
+            ```bash
+            unzip MenuBarMonitor.app.zip -d /Applications
+            xattr -dr com.apple.quarantine /Applications/MenuBarMonitor.app
+            open /Applications/MenuBarMonitor.app
+            ```
+
+            …or right-click the app in Finder and choose **Open**, then confirm once.
+            It appears in the menu bar, not the Dock; turn on **Launch at login** in its
+            Settings to keep it there.
+
+            Building from source avoids the warning entirely and takes about ten seconds:
+            see [INSTALL.md](https://github.com/rwijnen/menu-bar-monitor/blob/main/INSTALL.md).
