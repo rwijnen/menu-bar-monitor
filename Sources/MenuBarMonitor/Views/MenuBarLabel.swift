@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// What sits in the menu bar. `style` overrides the saved setting, so the
-/// settings window can preview all three styles side by side.
-struct MenuBarLabel: View {
+/// What sits in one metric's menu bar item. `style` overrides the saved setting, so
+/// the settings window can preview all three styles side by side.
+struct MetricLabel: View {
+    let metric: Metric
     let store: MetricsStore
     let settings: AppSettings
     var style: MenuBarStyle?
@@ -12,19 +13,21 @@ struct MenuBarLabel: View {
     private let graphSize = CGSize(width: 32, height: 16)
 
     var body: some View {
-        HStack(spacing: 10) {
-            if settings.showCPU { cpu }
-            if settings.showMemory { memory }
-            if settings.showNetwork { network }
+        Group {
+            switch metric {
+            case .cpu: cpu
+            case .memory: memory
+            case .network: network
+            }
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 5)
         .frame(height: 22)
         .fixedSize()
     }
 
     private var cpu: some View {
         HStack(spacing: 3) {
-            symbol("cpu",
+            symbol(.cpu,
                    tint: activeStyle == .iconsAndNumbers && severity.cpuIsHot
                        ? Palette.critical : nil)
             switch activeStyle {
@@ -44,7 +47,7 @@ struct MenuBarLabel: View {
 
     private var memory: some View {
         HStack(spacing: 3) {
-            symbol("memorychip",
+            symbol(.memory,
                    tint: activeStyle == .iconsAndNumbers ? severity.memoryWarningColor : nil)
             switch activeStyle {
             case .sparklines:
@@ -80,7 +83,7 @@ struct MenuBarLabel: View {
             case .miniBars:
                 EmptyView()
             case .iconsAndNumbers:
-                symbol("arrow.up.arrow.down")
+                symbol(.network)
             }
             VStack(alignment: .leading, spacing: -1) {
                 fixedWidthText("↑ " + Format.rate(store.network.uploadPerSecond),
@@ -91,8 +94,8 @@ struct MenuBarLabel: View {
         }
     }
 
-    private func symbol(_ name: String, tint: Color? = nil) -> some View {
-        Image(systemName: name)
+    private func symbol(_ metric: Metric, tint: Color? = nil) -> some View {
+        Image(systemName: metric.symbol)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(tint ?? .primary)
     }
@@ -109,5 +112,24 @@ struct MenuBarLabel: View {
             }
             .font(.system(size: size, weight: .medium).monospacedDigit())
             .lineLimit(1)
+    }
+}
+
+/// All the visible items side by side, as they look in the menu bar. The app itself
+/// gives each metric a status item of its own; this is for the style previews in
+/// Settings and the screenshots.
+struct MenuBarLabel: View {
+    let store: MetricsStore
+    let settings: AppSettings
+    var style: MenuBarStyle?
+
+    var body: some View {
+        // About the gap macOS leaves between neighbouring status items.
+        HStack(spacing: 4) {
+            ForEach(settings.visibleMetrics) { metric in
+                MetricLabel(metric: metric, store: store, settings: settings, style: style)
+            }
+        }
+        .fixedSize()
     }
 }

@@ -61,19 +61,22 @@ Sources/MenuBarMonitor/
     NetworkSampler    64-bit byte counters on the primary interface, its name and address
     AppSampler        CPU time per process, grouped under the app responsible for it
     Readings          the values the samplers return
+    Metric            CPU, memory and network: one menu bar item each
+                      DropdownState: which item's dropdown is open (at most one)
     Format            how every number is written
   State/
     MetricsStore      takes a reading each tick and keeps a minute of history
     AppSettings       the user's choices, kept in UserDefaults
   Views/
-    MenuBarLabel      what sits in the menu bar, in each of the three styles
-    PanelView         the dropdown
+    MenuBarLabel      MetricLabel, what sits in one item in each of the three
+                      styles; MenuBarLabel, all of them together, for previews
+    PanelView         one metric's dropdown
     SettingsView      the settings window, with a live preview of each style
     Sparkline         the graph shape, the mini bar and the memory bar
     Theme             the palette and the warning colours
   App/
     main              starts the app, or a developer command
-    AppDelegate       the status item, opening and closing the dropdown, settings
+    AppDelegate       a status item per metric, which dropdown is open, settings
     DropdownPanel     the borderless glass panel under the status item
     DevTools          --sample and --snapshot
 Tools/make-icon.swift draws the icon with Core Graphics
@@ -115,8 +118,8 @@ as the number formatting and the sparkline geometry did.
 Please do not send a UI change with "looks right to me" as the only evidence. Both of these
 work headlessly and need no screen-recording permission:
 
-**`--snapshot <dir>`** renders the menu bar item in every style, the dropdown and the
-settings window, in light and dark, from fixed demo data:
+**`--snapshot <dir>`** renders the menu bar items in every style, each metric's dropdown
+and the settings window, in light and dark, from fixed demo data:
 
 ```bash
 swift build -c release && .build/release/MenuBarMonitor --snapshot Docs
@@ -193,15 +196,19 @@ gh pr create --base main --fill
 
 ## Common tasks
 
-**Add a metric.** A sampler in `Model/` that returns a reading struct (see `Readings`),
-called from `MetricsStore.sample()` and stored by `record(…)` with its own history. Then a
-section in `PanelView`, an item in `MenuBarLabel` for each style, a toggle in `AppSettings`
-and `SettingsView`, and demo values in `DevTools` so the screenshots show it. Test the
+**Add a metric.** A case in `Metric`, with a title, a symbol and an autosave name — which,
+like a style's raw value, is stored on disk and must never be renamed. A sampler in
+`Model/` that returns a reading struct (see `Readings`), called from
+`MetricsStore.sample()` and stored by `record(…)` with its own history. Then its section in
+`PanelView` and its label in `MetricLabel` for each style — the compiler points at every
+`switch` — a stored toggle in `AppSettings`, and demo values in `DevTools` so the
+screenshots show it. The status item, its dropdown and the Settings toggle follow from the
+`Metric` case by themselves. Test the
 sampler against the live machine and the store with known readings.
 
 **Add a menu bar style.** A case in `MenuBarStyle` with a title and subtitle — its raw
 value is stored on disk, so never rename one later. The compiler then points at every
-`switch` in `MenuBarLabel` that needs it. Settings and `--snapshot` pick it up by
+`switch` in `MetricLabel` that needs it. Settings and `--snapshot` pick it up by
 themselves. Check the item's width against the others: the menu bar hides items that do
 not fit, and on a notched MacBook that happens quickly.
 

@@ -21,16 +21,17 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("CPU", isOn: $settings.showCPU)
-                    .disabled(settings.showCPU && settings.visibleMetricCount == 1)
-                Toggle("Memory", isOn: $settings.showMemory)
-                    .disabled(settings.showMemory && settings.visibleMetricCount == 1)
-                Toggle("Network", isOn: $settings.showNetwork)
-                    .disabled(settings.showNetwork && settings.visibleMetricCount == 1)
+                ForEach(Metric.allCases) { metric in
+                    Toggle(metric.title, isOn: Binding(
+                        get: { settings.isVisible(metric) },
+                        set: { settings.setVisible(metric, $0) }))
+                        .disabled(!settings.canHide(metric))
+                }
             } header: {
                 Text("Show in menu bar")
             } footer: {
-                Text("At least one metric stays visible.")
+                Text("Each is its own item, with its own dropdown. ⌘-drag one to move it. "
+                     + "At least one stays visible.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

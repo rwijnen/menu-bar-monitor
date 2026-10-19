@@ -54,8 +54,8 @@ before installing:
 open build/MenuBarMonitor.app
 ```
 
-It appears in the menu bar, not the Dock. To quit it, click it and choose **Quit** at the
-bottom of the dropdown.
+It appears in the menu bar, not the Dock. To quit it, click any of its items and choose
+**Quit** at the bottom of the dropdown.
 
 ## Install it
 
@@ -66,7 +66,8 @@ bottom of the dropdown.
 Copies the app to `/Applications` — falling back to `~/Applications` if that is not
 writable — quits any copy that is already running, and starts the new one.
 
-To move the item along the menu bar, hold ⌘ and drag it. macOS remembers where you put it.
+CPU, memory and network are three separate items. To move one along the menu bar, hold ⌘
+and drag it; macOS remembers where you put each.
 
 ## Start it at login
 
@@ -123,10 +124,11 @@ It writes nothing else anywhere: no caches, no support folder, no helper.
 
 ## Troubleshooting
 
-**The item does not appear in the menu bar**
+**An item does not appear in the menu bar**
 macOS hides menu bar items that do not fit, without saying so — on a MacBook with a notch,
 items to the left of the notch are the first to go. Quit an app with its own menu bar item,
-or pick **Mini bars** in Settings, which is the narrowest style. Check it is running with
+pick **Mini bars** in Settings, which is the narrowest style, or switch off a metric you can
+do without. Check it is running with
 `pgrep -x MenuBarMonitor`.
 
 **Memory is amber or red**

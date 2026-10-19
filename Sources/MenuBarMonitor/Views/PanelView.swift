@@ -6,10 +6,12 @@ struct PanelActions {
     var quit: @MainActor () -> Void
 }
 
-/// The dropdown shown when the menu bar item is clicked.
+/// The dropdown shown when one metric's menu bar item is clicked: that metric's
+/// detail, and the app's actions underneath.
 struct PanelView: View {
     static let width: CGFloat = 300
 
+    let metric: Metric
     let store: MetricsStore
     let settings: AppSettings
     let actions: PanelActions
@@ -18,11 +20,14 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            cpuSection.sectionPadding()
-            Divider()
-            memorySection.sectionPadding()
-            Divider()
-            networkSection.sectionPadding()
+            Group {
+                switch metric {
+                case .cpu: cpuSection
+                case .memory: memorySection
+                case .network: networkSection
+                }
+            }
+            .sectionPadding()
             Divider()
             footer
         }
@@ -31,7 +36,7 @@ struct PanelView: View {
 
     private var cpuSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "CPU", symbol: "cpu") {
+            SectionHeader(title: Metric.cpu.title, symbol: Metric.cpu.symbol) {
                 Text(Format.percent(store.cpu.total))
                     .foregroundStyle(severity.cpuIsHot ? Palette.critical : .primary)
             }
@@ -57,7 +62,7 @@ struct PanelView: View {
 
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "Memory", symbol: "memorychip") {
+            SectionHeader(title: Metric.memory.title, symbol: Metric.memory.symbol) {
                 let used = Format.gigabytes(store.memory.used)
                 let total = Format.gigabytes(store.memory.total)
                 Text("\(used) / \(total) GB")
@@ -80,7 +85,7 @@ struct PanelView: View {
 
     private var networkSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "Network", symbol: "arrow.up.arrow.down") {
+            SectionHeader(title: Metric.network.title, symbol: Metric.network.symbol) {
                 HStack(spacing: 8) {
                     rate("↓", store.network.downloadPerSecond, color: Palette.download)
                     rate("↑", store.network.uploadPerSecond, color: Palette.upload)

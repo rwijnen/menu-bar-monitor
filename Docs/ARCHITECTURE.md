@@ -15,10 +15,10 @@ flowchart TD
     S --> N["NetworkSampler<br/>sysctl NET_RT_IFLIST2,<br/>SCDynamicStore"]
     S --> A["AppSampler<br/>proc_pid_rusage"]
     C & M & N & A --> R["MetricsStore.record(…)<br/>current values + a minute of history"]
-    R -->|"@Observable"| L["MenuBarLabel<br/>in the status item"]
-    R -->|"@Observable"| P["PanelView<br/>in the dropdown, when open"]
+    R -->|"@Observable"| L["MetricLabel × 3<br/>one per status item"]
+    R -->|"@Observable"| P["PanelView<br/>in the open dropdown"]
     R -->|"@Observable"| V["SettingsView previews<br/>when open"]
-    R -->|"onUpdate"| W["AppDelegate<br/>resizes the status item"]
+    R -->|"onUpdate"| W["AppDelegate<br/>resizes the status items"]
 ```
 
 Every reading is taken on the main thread. That sounds wrong for a monitor, but a round is
@@ -38,14 +38,18 @@ for a missing CPU reading, so the graph does not start with a false zero.
 history, and today's traffic. `sample()` asks the samplers; `record(…)` applies a round of
 readings, and is the seam the tests and the screenshot generator use to feed known values.
 
-**The status item** is an `NSStatusItem` whose button hosts an `NSHostingView` with
-`MenuBarLabel` in it. The hosting view refuses hit-testing, so clicks reach the button, and
-it reports size changes so the item can be resized to fit.
+**The status items** — one per `Metric`, each owned by a `StatusItemController` in
+`AppDelegate`. Each item's button hosts an `NSHostingView` with that metric's
+`MetricLabel`. The hosting view refuses hit-testing, so clicks reach the button, and it
+reports size changes so the item can be resized to fit. Switching a metric off in Settings
+hides its item (`isVisible`), observed through `withObservationTracking`.
 
-**The dropdown** is `DropdownPanel`, a borderless non-activating `NSPanel` at pop-up menu
-level, holding `PanelView`. On macOS 26 and later it sits in an `NSGlassEffectView`; before
-that, in an `NSVisualEffectView` with the popover material and a rounded mask. It closes on
-a click anywhere outside the app, on Escape, or on a second click on the item.
+**The dropdowns** — each item has its own `DropdownPanel`, a borderless non-activating
+`NSPanel` at pop-up menu level, holding a `PanelView` for that metric, made the first time
+it is opened. On macOS 26 and later it sits in an `NSGlassEffectView`; before that, in an
+`NSVisualEffectView` with the popover material and a rounded mask. `DropdownState` keeps
+at most one open: a click on another item moves the dropdown there, a second click on the
+same item closes it, and a click anywhere outside the app or Escape closes it.
 
 **Settings** is a plain `NSWindow` with an `NSHostingController`. The app has no Dock icon
 or menu bar of its own (`LSUIElement`), so SwiftUI's `Settings` scene has nowhere to hang.
@@ -55,6 +59,13 @@ or menu bar of its own (`LSUIElement`), so SwiftUI's `Settings` scene has nowher
 **An `NSStatusItem`, not SwiftUI's `MenuBarExtra`.** A `MenuBarExtra` label is rendered as
 one image and one string; shapes, stacks and colours in it are dropped. Live coloured
 graphs need a real view in the menu bar, and only a status item's button can hold one.
+
+**Three status items, not one.** The first version drew all three metrics in one item
+with one dropdown. Separate items are what the system's own items do: each gets its own
+click target and highlight, can be ⌘-dragged on its own, is its own element to VoiceOver,
+and disappears on its own when switched off. They are created right to left
+(`Metric.creationOrder`) because macOS puts each new item to the left of the last, and
+each has an autosave name so a position the user chose survives a relaunch.
 
 **A custom panel, not an `NSPopover`.** A popover always draws an arrow and sits apart
 from the menu bar. The panel drops straight down like a menu, which is what the item looks

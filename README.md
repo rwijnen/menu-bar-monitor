@@ -3,8 +3,8 @@
 # Menu Bar Monitor
 
 **CPU, memory and network at a glance, in your Mac's menu bar.**
-Three small live graphs by default — or level bars, or plain numbers — and a dropdown with
-the busiest apps, memory pressure and today's traffic. Native Swift, no dependencies, no
+Three small live graphs by default — or level bars, or plain numbers — each with its own
+dropdown: the busiest apps, memory pressure, today's traffic. Native Swift, no dependencies, no
 permissions to grant, and it never goes online.
 
 [![CI](https://github.com/rwijnen/menu-bar-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/rwijnen/menu-bar-monitor/actions/workflows/ci.yml)
@@ -43,14 +43,15 @@ for its widest value, so the item never shuffles sideways as digits change. With
 **Colour warnings** on, CPU turns red above 85% and memory turns amber or red when macOS
 reports memory pressure.
 
-## The dropdown
+## The dropdowns
 
-Click the item for the detail.
+Each metric is its own item in the menu bar, with its own dropdown: click the CPU graph for
+CPU, the network rates for network. Clicking another item moves the dropdown there, and a
+click anywhere else closes it. Hold ⌘ and drag any of them to put them in another order.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-dark.png">
-  <img src="Docs/dropdown-light.png" width="300" alt="The dropdown: CPU with a one-minute graph, the user and system split and the three busiest apps; memory used of 16 GB with its pressure, breakdown and swap; network rates with a graph, the interface and address, and today's totals">
-</picture>
+| CPU | Memory | Network |
+|---|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: total usage, a one-minute graph, the user and system split, and the three busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: memory used of 16 GB, its pressure, the app, wired and compressed breakdown, and swap"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
 
 - **CPU** — the total, split into user and system time, a minute of history, and the
   three busiest apps. Helper processes count under the app responsible for them, so
@@ -59,10 +60,9 @@ Click the item for the detail.
   memory, out of what is installed. Then macOS's own pressure level, and swap.
 - **Network** — download and upload on the interface macOS is routing through, its name
   and address, and today's totals, which survive a restart and start again at midnight.
-- **Settings**, **Open Activity Monitor** and **Quit** along the bottom. A click anywhere
-  else closes it.
 
-On macOS 26 and later it sits on the system's glass material.
+Each ends with **Settings**, **Open Activity Monitor** and **Quit**. On macOS 26 and later
+the dropdowns sit on the system's glass material.
 
 ## Settings
 
@@ -71,8 +71,8 @@ On macOS 26 and later it sits on the system's glass material.
   <img src="Docs/settings-light.png" width="560" alt="Settings: the three menu bar styles with a live preview of each, toggles for CPU, memory and network, the update interval, colour warnings and launch at login">
 </picture>
 
-The style picker previews each option with live data. Any metric can be hidden, as long as
-one stays. The update interval is 1, 2 or 5 seconds, and **Launch at login** uses the
+The style picker previews each option with live data. Any metric's item can be hidden, as
+long as one stays. The update interval is 1, 2 or 5 seconds, and **Launch at login** uses the
 system's own login items.
 
 ## Where the numbers come from

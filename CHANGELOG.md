@@ -6,6 +6,17 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-19
+
+### Changed
+
+- **Each metric is its own menu bar item, with its own dropdown.** Clicking the CPU graph
+  shows CPU, the memory graph memory, the network rates network — instead of one dropdown
+  with all three. Clicking another item moves the dropdown there; a click anywhere else
+  closes it. Each item can be ⌘-dragged to its own place, and macOS remembers it. An item
+  that is switched off in Settings leaves the menu bar entirely, and its dropdown closes
+  if it was open.
+
 ## [1.0.0] — 2026-10-19
 
 ### Added
@@ -27,5 +38,6 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/rwijnen/menu-bar-monitor/releases/tag/v1.0.0

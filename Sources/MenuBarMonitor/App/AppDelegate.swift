@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 /// Hosts the SwiftUI label inside the status bar button. Clicks pass through to
@@ -14,98 +15,180 @@ private final class StatusLabelHostingView<Content: View>: NSHostingView<Content
     }
 }
 
+/// One metric's menu bar item and its dropdown. Separate items, rather than one
+/// item with three parts, give each its own click target, highlight, place in the
+/// menu bar (⌘-drag) and accessibility element — the way the system's own items
+/// behave.
+@MainActor
+private final class StatusItemController {
+    let metric: Metric
+    private let item: NSStatusItem
+    private let label: StatusLabelHostingView<MetricLabel>
+    private let makePanelView: () -> PanelView
+    private var panel: DropdownPanel?
+
+    init(metric: Metric, store: MetricsStore, settings: AppSettings,
+         makePanelView: @escaping () -> PanelView,
+         target: AnyObject, action: Selector) {
+        self.metric = metric
+        self.makePanelView = makePanelView
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = metric.autosaveName
+        label = StatusLabelHostingView(
+            rootView: MetricLabel(metric: metric, store: store, settings: settings))
+
+        guard let button = item.button else { return }
+        button.target = target
+        button.action = action
+        button.sendAction(on: [.leftMouseDown, .rightMouseDown])
+        button.setAccessibilityLabel(metric.title)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.onSizeChange = { [weak self] in self?.updateLength() }
+        button.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+            label.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+        ])
+    }
+
+    func owns(_ sender: Any?) -> Bool {
+        (sender as? NSStatusBarButton) === item.button
+    }
+
+    var isVisible: Bool {
+        get { item.isVisible }
+        set { if item.isVisible != newValue { item.isVisible = newValue } }
+    }
+
+    func updateLength() {
+        let width = ceil(label.fittingSize.width)
+        if item.length != width { item.length = width }
+    }
+
+    func showPanel() {
+        guard let button = item.button, let buttonWindow = button.window else { return }
+        let panel = self.panel ?? DropdownPanel(rootView: makePanelView())
+        self.panel = panel
+        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        panel.show(below: anchor)
+        button.highlight(true)
+    }
+
+    func hidePanel() {
+        panel?.orderOut(nil)
+        item.button?.highlight(false)
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
     private(set) lazy var store = MetricsStore(settings: settings)
 
-    private var statusItem: NSStatusItem!
-    private var label: NSView?
-    private var panel: DropdownPanel?
+    private var items: [Metric: StatusItemController] = [:]
+    private var dropdown = DropdownState()
     private var settingsWindow: NSWindow?
     private var eventMonitors: [Any] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.autosaveName = "MenuBarMonitor"
-
-        if let button = statusItem.button {
-            button.target = self
-            button.action = #selector(statusItemClicked)
-            button.sendAction(on: [.leftMouseDown, .rightMouseDown])
-            button.setAccessibilityLabel("Menu Bar Monitor")
-
-            let label = StatusLabelHostingView(
-                rootView: MenuBarLabel(store: store, settings: settings))
-            label.translatesAutoresizingMaskIntoConstraints = false
-            label.onSizeChange = { [weak self] in self?.updateStatusItemLength() }
-            button.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: button.leadingAnchor),
-                label.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            ])
-            self.label = label
+        for metric in Metric.creationOrder {
+            items[metric] = StatusItemController(
+                metric: metric, store: store, settings: settings,
+                makePanelView: { [unowned self] in
+                    PanelView(metric: metric, store: store, settings: settings,
+                              actions: panelActions)
+                },
+                target: self, action: #selector(statusItemClicked(_:)))
         }
+        applyVisibility()
+        observeVisibility()
 
-        store.onUpdate = { [weak self] in self?.updateStatusItemLength() }
+        store.onUpdate = { [weak self] in self?.updateLengths() }
         store.start()
-        updateStatusItemLength()
+        updateLengths()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         store.saveTraffic()
     }
 
-    private func updateStatusItemLength() {
-        guard let label else { return }
-        let width = ceil(label.fittingSize.width)
-        if statusItem.length != width { statusItem.length = width }
+    private func updateLengths() {
+        items.values.forEach { $0.updateLength() }
     }
 
-    // MARK: Dropdown
+    // MARK: - Which items are shown
 
-    @objc private func statusItemClicked() {
-        if panel?.isVisible == true { closePanel() } else { openPanel() }
+    private func applyVisibility() {
+        for (metric, item) in items {
+            let visible = settings.isVisible(metric)
+            if !visible, dropdown.open == metric { closeDropdown() }
+            item.isVisible = visible
+        }
     }
 
-    private func openPanel() {
-        guard let button = statusItem.button, let buttonWindow = button.window else { return }
-        let panel = self.panel ?? makePanel()
-        self.panel = panel
+    /// Re-applies visibility whenever a Show in menu bar toggle changes. Observation
+    /// fires once per registration, so each change registers again.
+    private func observeVisibility() {
+        withObservationTracking {
+            for metric in Metric.allCases { _ = settings.isVisible(metric) }
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.applyVisibility()
+                self?.observeVisibility()
+            }
+        }
+    }
 
-        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        panel.show(below: anchor)
-        button.highlight(true)
+    // MARK: - Dropdowns
 
-        // Close on any click outside the app, or on Escape.
+    @objc private func statusItemClicked(_ sender: Any?) {
+        guard let clicked = items.values.first(where: { $0.owns(sender) }) else { return }
+        let change = dropdown.click(clicked.metric)
+        if let close = change.close { items[close]?.hidePanel() }
+        if let open = change.open {
+            items[open]?.showPanel()
+            startDismissMonitors()
+        } else {
+            stopDismissMonitors()
+        }
+    }
+
+    private func closeDropdown() {
+        if let open = dropdown.dismiss() { items[open]?.hidePanel() }
+        stopDismissMonitors()
+    }
+
+    /// Close on any click outside the app, or on Escape. Clicks on the other items
+    /// are inside the app, so they arrive as item clicks instead and move the
+    /// dropdown rather than just closing it.
+    private func startDismissMonitors() {
+        guard eventMonitors.isEmpty else { return }
         let outsideClick = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.closePanel() }
+            MainActor.assumeIsolated { self?.closeDropdown() }
         }
         let escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event }
-            MainActor.assumeIsolated { self?.closePanel() }
+            MainActor.assumeIsolated { self?.closeDropdown() }
             return nil
         }
         eventMonitors = [outsideClick, escape].compactMap { $0 }
     }
 
-    private func closePanel() {
-        panel?.orderOut(nil)
-        statusItem.button?.highlight(false)
+    private func stopDismissMonitors() {
         eventMonitors.forEach(NSEvent.removeMonitor)
         eventMonitors.removeAll()
     }
 
-    private func makePanel() -> DropdownPanel {
-        let actions = PanelActions(
+    private var panelActions: PanelActions {
+        PanelActions(
             openSettings: { [weak self] in
-                self?.closePanel()
+                self?.closeDropdown()
                 self?.showSettings()
             },
             openActivityMonitor: { [weak self] in
-                self?.closePanel()
+                self?.closeDropdown()
                 NSWorkspace.shared.openApplication(
                     at: URL(fileURLWithPath:
                         "/System/Applications/Utilities/Activity Monitor.app"),
@@ -113,11 +196,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             quit: { NSApp.terminate(nil) }
         )
-        return DropdownPanel(
-            rootView: PanelView(store: store, settings: settings, actions: actions))
     }
 
-    // MARK: Settings
+    // MARK: - Settings
 
     private func showSettings() {
         if settingsWindow == nil {
