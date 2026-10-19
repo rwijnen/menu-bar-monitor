@@ -25,16 +25,17 @@ interface names — and the threat model is mostly about what it must *not* do w
    reads byte counters the kernel keeps per interface (`sysctl NET_RT_IFLIST2`); it does
    not send, probe or resolve anything. No update check, no telemetry.
 2. **It needs no privileges of its own.** No root helper, no kernel extension, no
-   entitlements, and no permission prompts. To list other users' processes in the CPU
-   dropdown it runs `/bin/ps -Aceo pid=,pcpu=,comm=`, which macOS installs setuid root for
-   exactly that. It is the only program the app starts, its arguments are fixed, and it
-   runs only while the CPU dropdown is open.
+   entitlements, and no permission prompts. To list other users' processes it runs two
+   programs macOS installs setuid root for exactly that: `/bin/ps -Aceo pid=,pcpu=,comm=`
+   while the CPU dropdown is open, and `/usr/bin/top -l 1 -stats pid,mem,command` while
+   the memory dropdown is open. They are the only programs the app starts, and their
+   arguments are fixed.
 3. **It writes only its own preferences.** Its settings and today's traffic totals, in
    `UserDefaults` under `com.robinwijnen.menubarmonitor`. Nothing else, anywhere.
 
 Process names and app names come from other programs and are shown in the dropdown, so
-they count as input. They are parsed from `ps` by column, drawn as plain text by SwiftUI,
-and never interpreted.
+they count as input. They are parsed from `ps` and `top` by column, drawn as plain text by
+SwiftUI, and never interpreted.
 
 Findings that would be especially valuable:
 

@@ -102,17 +102,8 @@ struct PanelView: View {
             }
 
             SectionTitle("Top processes")
-            VStack(spacing: 3) {
-                // Always the same number of rows, so the dropdown keeps its height.
-                ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
-                    if index < details.processes.count {
-                        AppRow(app: details.processes[index])
-                    } else {
-                        DetailRow(label: index == 0 && !details.processesMeasured
-                                    ? "Measuring…" : " ",
-                                  value: "")
-                    }
-                }
+            processRows(details.processes, measured: details.processesMeasured) {
+                Format.finePercent($0.value)
             }
         }
     }
@@ -145,25 +136,86 @@ struct PanelView: View {
         .padding(.horizontal, 6)
     }
 
+    // MARK: - Memory
+
     private var memorySection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: Metric.memory.title, symbol: Metric.memory.symbol) {
-                let used = Format.gigabytes(store.memory.used)
-                let total = Format.gigabytes(store.memory.total)
-                Text("\(used) / \(total) GB")
+        let memory = store.memory
+        let details = store.memoryDetails
+        let installed = Int((Double(memory.total) / 1_073_741_824).rounded())
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(Metric.memory.title, systemImage: Metric.memory.symbol)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(installed) GB installed")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
-            UsageBar(fraction: store.memory.usedFraction, color: severity.memoryColor)
-                .padding(.vertical, 2)
+
+            // Bottom-aligned, so the captions share a line under gauges of two shapes.
+            HStack(alignment: .bottom) {
+                Spacer()
+                PressureGauge(pressure: memory.pressure)
+                Spacer()
+                RingGauge(segments: [
+                              .init(fraction: memory.fraction(of: memory.app),
+                                    color: Palette.appMemory),
+                              .init(fraction: memory.fraction(of: memory.wired),
+                                    color: Palette.wiredMemory),
+                              .init(fraction: memory.fraction(of: memory.compressed),
+                                    color: Palette.compressedMemory),
+                          ],
+                          value: Format.percent(memory.usedFraction * 100), caption: "Used",
+                          diameter: 80, lineWidth: 8)
+                Spacer()
+            }
+
+            SectionTitle("Usage history")
+            Sparkline(values: store.memoryHistory, maxValue: 100,
+                      capacity: MetricsStore.historyLength, color: severity.memoryColor)
+                .frame(height: 48)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.05)))
+
+            SectionTitle("Details")
+            DetailRow(label: "Used", value: Format.memory(memory.used))
+            StackedBar(parts: [
+                .init(fraction: memory.fraction(of: memory.app), color: Palette.appMemory),
+                .init(fraction: memory.fraction(of: memory.wired), color: Palette.wiredMemory),
+                .init(fraction: memory.fraction(of: memory.compressed),
+                      color: Palette.compressedMemory),
+            ])
             VStack(spacing: 3) {
-                DetailRow(label: "Pressure", value: store.memory.pressure.title,
-                          valueColor: severity.memoryWarningColor)
-                let app = Format.gigabytes(store.memory.app)
-                let wired = Format.gigabytes(store.memory.wired)
-                let compressed = Format.gigabytes(store.memory.compressed)
-                DetailRow(label: "App / wired / compressed",
-                          value: "\(app) / \(wired) / \(compressed) GB")
-                DetailRow(label: "Swap used",
-                          value: "\(Format.gigabytes(store.memory.swapUsed)) GB")
+                DetailRow(label: "App", value: Format.memory(memory.app), dot: Palette.appMemory)
+                DetailRow(label: "Wired", value: Format.memory(memory.wired),
+                          dot: Palette.wiredMemory)
+                DetailRow(label: "Compressed", value: Format.memory(memory.compressed),
+                          dot: Palette.compressedMemory)
+                DetailRow(label: "Free", value: Format.memory(memory.free),
+                          dot: Color.primary.opacity(0.25))
+                DetailRow(label: "Swap", value: Format.memory(memory.swapUsed))
+            }
+
+            SectionTitle("Top processes")
+            processRows(details.processes, measured: details.processesMeasured) {
+                Format.memory($0.value)
+            }
+        }
+    }
+
+    /// Always the same number of rows, so a dropdown keeps its height while the list
+    /// arrives and as it changes.
+    private func processRows(_ apps: [AppUsage], measured: Bool,
+                             value: @escaping (AppUsage) -> String) -> some View {
+        VStack(spacing: 3) {
+            ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
+                if index < apps.count {
+                    AppRow(app: apps[index], value: value(apps[index]))
+                } else {
+                    DetailRow(label: index == 0 && !measured ? "Measuring…" : " ", value: "")
+                }
             }
         }
     }
@@ -285,6 +337,7 @@ private struct DetailRow: View {
 
 private struct AppRow: View {
     let app: AppUsage
+    let value: String
 
     var body: some View {
         HStack(spacing: 6) {
@@ -299,7 +352,7 @@ private struct AppRow: View {
             .frame(width: 14, height: 14)
             Text(app.name).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             Spacer()
-            Text(Format.finePercent(app.cpu)).monospacedDigit()
+            Text(value).monospacedDigit()
         }
         .font(.system(size: 12))
     }

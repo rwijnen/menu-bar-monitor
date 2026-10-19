@@ -78,22 +78,3 @@ struct MiniBar: View {
             .frame(width: 6, height: 16)
     }
 }
-
-/// A horizontal usage bar, used for memory in the dropdown.
-struct UsageBar: View {
-    var fraction: Double
-    var color: Color
-
-    var body: some View {
-        Capsule()
-            .fill(Color.primary.opacity(0.12))
-            .overlay(alignment: .leading) {
-                GeometryReader { proxy in
-                    Capsule()
-                        .fill(color)
-                        .frame(width: proxy.size.width * min(max(fraction, 0), 1))
-                }
-            }
-            .frame(height: 6)
-    }
-}

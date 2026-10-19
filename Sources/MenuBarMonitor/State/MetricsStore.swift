@@ -12,6 +12,7 @@ final class MetricsStore {
     private(set) var memory = MemoryReading()
     private(set) var network = NetworkReading()
     private(set) var cpuDetails = CPUDetails()
+    private(set) var memoryDetails = MemoryDetails()
     /// Which kind of core each core is. Set from `sysctl` at launch; the screenshot
     /// generator replaces it with a fixed layout.
     var coreGroups = CoreLayout.current(coreCount: ProcessInfo.processInfo.processorCount)
@@ -20,7 +21,12 @@ final class MetricsStore {
     /// only while it is open, and straight away when it opens, so it is never blank.
     var detailMetric: Metric? {
         didSet {
-            guard detailMetric == .cpu, oldValue != .cpu else { return }
+            guard detailMetric != oldValue else { return }
+            if detailMetric == .memory {
+                memoryProcesses.reset()
+                sampleMemoryDetails()
+            }
+            guard detailMetric == .cpu else { return }
             sampleCPUDetails()
             // The clock speed is a difference between two readings: take the second
             // one soon rather than a whole interval later.
@@ -50,6 +56,8 @@ final class MetricsStore {
     @ObservationIgnored private let temperatureSampler = TemperatureSampler()
     @ObservationIgnored private let frequencySampler = FrequencySampler()
     @ObservationIgnored private let processSampler = ProcessSampler()
+    /// `top` costs about 0.6 s of CPU a run, and footprints change slowly.
+    @ObservationIgnored private var memoryProcesses = Throttle(interval: 10)
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var todayKey: String
     @ObservationIgnored private var readingsSinceSave = 0
@@ -89,6 +97,17 @@ final class MetricsStore {
                memory: memorySampler.read(),
                network: networkSampler.read())
         if detailMetric == .cpu { sampleCPUDetails() }
+        if detailMetric == .memory { sampleMemoryDetails() }
+    }
+
+    /// The memory dropdown's process list, from `top`: when the dropdown opens, then
+    /// every ten seconds while it stays open.
+    private func sampleMemoryDetails() {
+        guard memoryProcesses.isDue() else { return }
+        processSampler.read(.memory, limit: Self.processRowCount) { [weak self] apps in
+            guard let self else { return }
+            record(memoryDetails: MemoryDetails(processes: apps, processesMeasured: true))
+        }
     }
 
     /// The CPU dropdown's extra readings. The process list comes from running `ps`,
@@ -101,7 +120,7 @@ final class MetricsStore {
         details.uptime = SystemInfo.uptime()
         record(cpuDetails: details)
         guard includingProcesses else { return }
-        processSampler.read(limit: Self.processRowCount) { [weak self] apps in
+        processSampler.read(.cpu, limit: Self.processRowCount) { [weak self] apps in
             guard let self else { return }
             var details = cpuDetails
             details.processes = apps
@@ -137,6 +156,10 @@ final class MetricsStore {
 
     func record(cpuDetails details: CPUDetails) {
         cpuDetails = details
+    }
+
+    func record(memoryDetails details: MemoryDetails) {
+        memoryDetails = details
     }
 
     /// Upper bound for network graphs over the last `count` readings. The 10 KB/s

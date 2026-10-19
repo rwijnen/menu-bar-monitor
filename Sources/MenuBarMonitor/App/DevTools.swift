@@ -29,6 +29,7 @@ enum DevTools {
     /// run loop rather than sleeping, because the process list arrives on it.
     private static func printSamples() {
         let store = MetricsStore(settings: AppSettings())
+        defer { printMemoryProcesses(store) }
         store.detailMetric = .cpu
         for _ in 0..<4 {
             RunLoop.main.run(until: Date().addingTimeInterval(1))
@@ -58,11 +59,22 @@ enum DevTools {
             net \(network.interfaceDisplayName ?? "-") (\(network.interfaceName ?? "-")) \
             \(network.ipAddress ?? "-")  ↓ \(Format.rate(network.downloadPerSecond)) \
             ↑ \(Format.rate(network.uploadPerSecond))
-            apps \(details.processes.map { "\($0.name) \(Format.finePercent($0.cpu))" }
+            apps \(details.processes.map { "\($0.name) \(Format.finePercent($0.value))" }
                 .joined(separator: ", "))
             ---
             """)
         }
+    }
+
+    /// The memory dropdown's list, which comes from `top` and takes about a second.
+    private static func printMemoryProcesses(_ store: MetricsStore) {
+        store.detailMetric = .memory
+        let deadline = Date().addingTimeInterval(5)
+        while !store.memoryDetails.processesMeasured && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        }
+        let apps = store.memoryDetails.processes.map { "\($0.name) \(Format.memory($0.value))" }
+        print("memory apps \(apps.joined(separator: ", "))")
     }
 
     // MARK: - Screenshots
@@ -157,7 +169,7 @@ enum DevTools {
             ("mds_stores", nil, 1.5),
         ].map { name, path, cpu in
             AppUsage(id: name, name: name,
-                     icon: path.map { NSWorkspace.shared.icon(forFile: $0) }, cpu: cpu)
+                     icon: path.map { NSWorkspace.shared.icon(forFile: $0) }, value: cpu)
         }
         store.record(cpuDetails: CPUDetails(
             temperature: 45,
@@ -169,6 +181,20 @@ enum DevTools {
             uptime: 6 * 3600 + 17 * 60,
             processes: processes,
             processesMeasured: true))
+
+        let mib = 1_048_576.0
+        let memoryHogs = [
+            ("WindowServer", nil, 2068.5), ("Xcode", "/Applications/Xcode.app", 1802.3),
+            ("Safari", "/Applications/Safari.app", 1640.9),
+            ("Music", "/System/Applications/Music.app", 912.4),
+            ("Mail", "/System/Applications/Mail.app", 650.7),
+            ("Finder", "/System/Library/CoreServices/Finder.app", 301.2),
+            ("mds_stores", nil, 214.8), ("kernel_task", nil, 156.0),
+        ].map { name, path, size in
+            AppUsage(id: name, name: name,
+                     icon: path.map { NSWorkspace.shared.icon(forFile: $0) }, value: size * mib)
+        }
+        store.record(memoryDetails: MemoryDetails(processes: memoryHogs, processesMeasured: true))
         return store
     }
 
