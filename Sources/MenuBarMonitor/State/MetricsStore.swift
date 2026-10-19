@@ -13,6 +13,10 @@ final class MetricsStore {
     private(set) var network = NetworkReading()
     private(set) var cpuDetails = CPUDetails()
     private(set) var memoryDetails = MemoryDetails()
+    private(set) var networkDetails = NetworkDetails()
+    /// Whether macOS had a connection at each of the last ninety readings. Recorded all
+    /// the time — it costs nothing — so the history is there when the dropdown opens.
+    private(set) var connectionHistory = ConnectionHistory()
     /// Which kind of core each core is. Set from `sysctl` at launch; the screenshot
     /// generator replaces it with a fixed layout.
     var coreGroups = CoreLayout.current(coreCount: ProcessInfo.processInfo.processorCount)
@@ -25,6 +29,16 @@ final class MetricsStore {
             if detailMetric == .memory {
                 memoryProcesses.reset()
                 sampleMemoryDetails()
+            }
+            if detailMetric == .network {
+                // Per-app rates are a difference between two nettop samples: take the
+                // first now and the second a second later, not a whole interval later.
+                processSampler.resetNetwork()
+                sampleNetworkDetails()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    guard self?.detailMetric == .network else { return }
+                    self?.sampleNetworkDetails()
+                }
             }
             guard detailMetric == .cpu else { return }
             sampleCPUDetails()
@@ -58,6 +72,8 @@ final class MetricsStore {
     @ObservationIgnored private let processSampler = ProcessSampler()
     /// `top` costs about 0.6 s of CPU a run, and footprints change slowly.
     @ObservationIgnored private var memoryProcesses = Throttle(interval: 10)
+    @ObservationIgnored private let connection = ConnectionMonitor()
+    @ObservationIgnored let wifi = WiFiName()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var todayKey: String
     @ObservationIgnored private var readingsSinceSave = 0
@@ -98,6 +114,37 @@ final class MetricsStore {
                network: networkSampler.read())
         if detailMetric == .cpu { sampleCPUDetails() }
         if detailMetric == .memory { sampleMemoryDetails() }
+        if detailMetric == .network { sampleNetworkDetails() }
+    }
+
+    /// The network dropdown's extras: the connection as macOS sees it, the Wi-Fi name
+    /// where allowed, and per-app traffic from `nettop`.
+    private func sampleNetworkDetails() {
+        var details = networkDetails
+        details.isConnected = connection.isConnected
+        details.connectionType = connection.connectionType
+        details.wifi = wifi.state
+        record(networkDetails: details)
+        processSampler.readNetwork(limit: Self.processRowCount) { [weak self] apps in
+            // Nil is the first sample, a baseline with nothing to compare against yet.
+            guard let self, let apps else { return }
+            var details = networkDetails
+            details.processes = apps
+            details.processesMeasured = true
+            record(networkDetails: details)
+        }
+    }
+
+    /// Asks for Location Services so the Wi-Fi name can be shown. Only ever from the
+    /// button in the network dropdown.
+    func requestWiFiNameAccess() {
+        wifi.onChange = { [weak self] in
+            guard let self else { return }
+            var details = networkDetails
+            details.wifi = wifi.state
+            record(networkDetails: details)
+        }
+        wifi.requestAccess()
     }
 
     /// The memory dropdown's process list, from `top`: when the dropdown opens, then
@@ -149,6 +196,7 @@ final class MetricsStore {
         network = networkReading
         Self.append(networkReading.downloadPerSecond, to: &downloadHistory)
         Self.append(networkReading.uploadPerSecond, to: &uploadHistory)
+        connectionHistory.record(connection.isConnected)
         addTraffic(down: networkReading.downloadDelta, up: networkReading.uploadDelta, now: now)
 
         onUpdate?()
@@ -160,6 +208,14 @@ final class MetricsStore {
 
     func record(memoryDetails details: MemoryDetails) {
         memoryDetails = details
+    }
+
+    func record(networkDetails details: NetworkDetails) {
+        networkDetails = details
+    }
+
+    func record(connectionHistory history: ConnectionHistory) {
+        connectionHistory = history
     }
 
     /// Upper bound for network graphs over the last `count` readings. The 10 KB/s

@@ -21,7 +21,7 @@ sidesteps Gatekeeper entirely.
 | Toolchain | Swift 6 — Xcode, or the Command Line Tools |
 | Disk | ~1 MB for the installed app |
 | Network | None, to build or to run |
-| Permissions | None — no prompts for screen recording, accessibility or anything else |
+| Permissions | None needed. Location Services only if you want to see the Wi-Fi network's name |
 
 If you do not have a toolchain yet:
 
@@ -149,6 +149,18 @@ macOS update could take them away. Everything else keeps working.
 The process list comes from running `ps` when the dropdown opens, and takes a moment to
 arrive. The clock speed is the difference between two readings, so it appears about half a
 second later.
+
+**The Wi-Fi network shows "Location Services off"**
+macOS gives network names only to apps allowed to use Location Services, and it was
+refused or is switched off. Turn on Menu Bar Monitor in **System Settings → Privacy &
+Security → Location Services**. An app you build from source is signed afresh each time,
+so macOS may ask again after a rebuild.
+
+**The connection says "None" while the Wi-Fi is on**
+The connection status is macOS's own view of whether it has a usable path to the network.
+The app does not test the internet itself — that would mean sending traffic — so a
+network whose router has lost its connection can still show as connected, and one that
+macOS has not finished joining shows as none.
 
 **`./build.sh: Permission denied`**
 `chmod +x build.sh`.

@@ -4,8 +4,8 @@
 
 **CPU, memory and network at a glance, in your Mac's menu bar.**
 Three small live graphs by default — or level bars, or plain numbers — each with its own
-dropdown: the busiest apps, memory pressure, today's traffic. Native Swift, no dependencies, no
-permissions to grant, and it never goes online.
+dropdown: the busiest apps, memory pressure, today's traffic. Native Swift, no dependencies, and
+it never goes online.
 
 [![CI](https://github.com/rwijnen/menu-bar-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/rwijnen/menu-bar-monitor/actions/workflows/ci.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
@@ -65,8 +65,12 @@ click anywhere else closes it. Hold ⌘ and drag any of them to put them in anot
   history; the same breakdown as a bar, with free memory and swap; and the eight apps
   using the most, system processes included, by the physical footprint Activity
   Monitor's Memory column shows.
-- **Network** — download and upload on the interface macOS is routing through, its name
-  and address, and today's totals, which survive a restart and start again at midnight.
+- **Network** — download and upload on the interface macOS is routing through, with a
+  minute of history, upload above the line and download below; whether macOS had a
+  connection at each of the last ninety readings; today's totals, which survive a
+  restart and start again at midnight, and totals since the Mac started; the
+  interface's status, hardware address and local IP; the Wi-Fi network's name, once you
+  allow it; and the apps moving the most data.
 
 Each ends with **Settings**, **Open Activity Monitor** and **Quit**.
 
@@ -93,7 +97,10 @@ system's own login items.
 | Memory used | `host_statistics64`: app + wired + compressed, as Activity Monitor counts it |
 | Memory pressure | `kern.memorystatus_vm_pressure_level` |
 | Swap | `vm.swapusage` |
-| Network | 64-bit byte counters from `sysctl NET_RT_IFLIST2`, on the primary interface only |
+| Network | 64-bit byte counters from the interface MIB, as `netstat -ib` reads them, on the primary interface only |
+| Connection | `NWPathMonitor`: macOS's own view of whether it has a connection — nothing is sent |
+| Wi-Fi network name | CoreWLAN, which answers only apps allowed to use Location Services |
+| Busiest apps by network | `/usr/bin/nettop`, which counts every process's bytes without privileges |
 | Busiest apps by CPU | `/bin/ps`, which can see every user's processes, grouped under the responsible app |
 | Busiest apps by memory | `/usr/bin/top`'s physical footprint, likewise for every user, grouped the same way |
 
@@ -117,8 +124,9 @@ its graphs with SwiftUI's `Canvas` and used 94 MB — 69 MB of it GPU memory, be
 The CPU and memory dropdowns' extras are read only while that dropdown is open. The CPU
 process list means running `ps` once a reading, about 20 ms of CPU each time. The memory
 list comes from `top`, which costs about 0.6 s of CPU a run, so it runs when the memory
-dropdown opens and then every ten seconds while it stays open. With the dropdowns closed
-neither ever runs.
+dropdown opens and then every ten seconds while it stays open. The network list runs
+`nettop`, about 10 ms a reading, while the network dropdown is open. With the dropdowns
+closed none of them ever runs.
 
 ## Why it is safe to run
 
@@ -126,11 +134,15 @@ Three rules, which [CONTRIBUTING.md](CONTRIBUTING.md#what-it-is-and-is-not) hold
 change to:
 
 - **It never goes online.** There is no networking code. The network graph reads the
-  byte counters the kernel already keeps; it does not send anything.
+  byte counters the kernel already keeps, and the connection status is macOS's own view;
+  nothing is sent to find either out. That is why there is no latency or jitter, which
+  Stats measures by pinging a server.
 - **It needs no privileges of its own.** No root helper, no kernel extension, no
-  entitlements, no permission prompts. To list other users' processes it runs `/bin/ps`
-  and `/usr/bin/top`, which macOS ships with that right, with fixed arguments and only
-  while the CPU or memory dropdown is open.
+  entitlements. To list other users' processes it runs `/bin/ps`, `/usr/bin/top` and
+  `/usr/bin/nettop`, with fixed arguments and only while the matching dropdown is open.
+  The one permission it can ask for is Location Services, and only when you click to
+  see the Wi-Fi network's name: macOS gives network names only to apps with it. Your
+  location itself is never read.
 - **It writes only its own preferences** — your settings and today's traffic totals.
 
 More in [SECURITY.md](SECURITY.md), including what is accepted rather than solved.
