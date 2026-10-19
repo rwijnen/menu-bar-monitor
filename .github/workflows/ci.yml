@@ -31,8 +31,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    # macOS 26: its SDK is the first with NSGlassEffectView, so this is the build that
-    # ships the glass dropdown. An older SDK would compile the fallback silently.
+    # macOS 26, the newest image, so the build is checked against the SDK users run.
     runs-on: macos-26
 
     steps:

@@ -210,11 +210,8 @@ enum DevTools {
     /// Forms use AppKit controls, which ImageRenderer cannot draw, so these go
     /// through an offscreen window instead.
     ///
-    /// The dropdown goes this way too, on a plain background rather than in its
-    /// glass panel: an offscreen capture of the glass draws large semibold text
-    /// almost black in dark mode, which the same view on a plain background does
-    /// not. The glass needs what is behind it on screen, and offscreen there is
-    /// nothing there.
+    /// The dropdowns go this way too, on a plain background: their material blurs what
+    /// is on screen behind them, and offscreen there is nothing.
     private static func renderAppKit<V: View>(_ view: V, appearance: NSAppearance,
                                               to url: URL) {
         let hosting = NSHostingView(rootView: view)

@@ -33,8 +33,8 @@ mismatched SwiftPM and Testing binaries and crashes at launch.
 
 There is no screen-recording or accessibility permission on the machine this was built on,
 so the menu bar itself cannot be captured. `--snapshot` renders the views offscreen
-instead; check anything it cannot show (the glass, the item's place in the menu bar) by
-asking the user to look.
+instead; check anything it cannot show (the material behind a dropdown, the item's place
+in the menu bar, dark mode over a bright window) by asking the user to look.
 
 ## Releasing
 

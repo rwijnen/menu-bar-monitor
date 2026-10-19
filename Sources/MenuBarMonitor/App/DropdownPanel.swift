@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// A borderless floating panel that drops down from the status item, like a
-/// menu, with the system glass material on macOS 26 and later.
+/// menu, on the system's popover material.
 final class DropdownPanel: NSPanel {
     private static let cornerRadius: CGFloat = 12
     private let content: NSView
@@ -39,17 +39,11 @@ final class DropdownPanel: NSPanel {
         invalidateShadow()
     }
 
+    /// The popover material, not Liquid Glass. Regular glass lets so much through that
+    /// over a bright window it stays light in dark mode, under text that stays white,
+    /// and the dropdown could not be read. The popover material darkens in dark mode
+    /// whatever is behind it, as it does for every system popover.
     private func makeBackground(around content: NSView) -> NSView {
-        // Swift 6.2 ships with the macOS 26 SDK, the first to have NSGlassEffectView.
-        // Older toolchains still build the app, with the popover material below.
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.cornerRadius = Self.cornerRadius
-            glass.contentView = content
-            return glass
-        }
-        #endif
         let effect = NSVisualEffectView()
         effect.material = .popover
         effect.blendingMode = .behindWindow

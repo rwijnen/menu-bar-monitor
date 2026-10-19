@@ -58,8 +58,8 @@ hides its item (`isVisible`), observed through `withObservationTracking`.
 
 **The dropdowns** — each item has its own `DropdownPanel`, a borderless non-activating
 `NSPanel` at pop-up menu level, holding a `PanelView` for that metric, made the first time
-it is opened. On macOS 26 and later it sits in an `NSGlassEffectView`; before that, in an
-`NSVisualEffectView` with the popover material and a rounded mask. `DropdownState` keeps
+it is opened. It sits in an `NSVisualEffectView` with the popover material and a rounded
+mask. `DropdownState` keeps
 at most one open: a click on another item moves the dropdown there, a second click on the
 same item closes it, and a click anywhere outside the app or Escape closes it.
 
@@ -82,6 +82,12 @@ each has an autosave name so a position the user chose survives a relaunch.
 **A custom panel, not an `NSPopover`.** A popover always draws an arrow and sits apart
 from the menu bar. The panel drops straight down like a menu, which is what the item looks
 like it should do.
+
+**The popover material, not Liquid Glass.** The dropdowns started out on macOS 26's
+regular glass (`NSGlassEffectView`). It lets so much of what is behind it through that over
+a bright window it stayed light grey in dark mode, while the text stayed white, and the
+dropdown could not be read. The popover material darkens in dark mode whatever is behind
+it, as every system popover does, so the dropdowns use that on every version of macOS.
 
 **Shapes, not `Canvas`.** The first version drew sparklines with SwiftUI's `Canvas`. It
 looked identical and cost 94 MB, of which 69 MB was GPU memory owned by the process:
@@ -141,7 +147,7 @@ own path is used instead.
 
 **Offscreen screenshots.** The machine this was built on has no screen-recording
 permission, so `--snapshot` renders views offscreen: `ImageRenderer` for pure SwiftUI, an
-offscreen window for anything with AppKit controls in it. The dropdown is rendered on a
-plain background rather than in its glass panel, because a capture of the glass draws
-large semibold text almost black in dark mode — the glass has nothing behind it to adapt
-to.
+offscreen window for anything with AppKit controls in it. The dropdowns are rendered on a
+plain background, because the material behind them blurs what is on screen, and offscreen
+there is nothing. That is also why the glass problem above was not caught before it
+shipped: no offscreen capture can show what a material does over a bright window.

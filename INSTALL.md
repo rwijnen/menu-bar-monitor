@@ -17,7 +17,7 @@ sidesteps Gatekeeper entirely.
 
 | | |
 |---|---|
-| macOS | 14 (Sonoma) or later; the glass dropdown needs macOS 26 |
+| macOS | 14 (Sonoma) or later |
 | Toolchain | Swift 6 — Xcode, or the Command Line Tools |
 | Disk | ~1 MB for the installed app |
 | Network | None, to build or to run |
@@ -35,9 +35,6 @@ Check it worked:
 ```bash
 swift --version   # expect 6.x
 ```
-
-The dropdown's glass material comes from the macOS 26 SDK, which ships with Swift 6.2 and
-later. With an older toolchain the app still builds, with the standard popover material.
 
 ## Build from source
 
