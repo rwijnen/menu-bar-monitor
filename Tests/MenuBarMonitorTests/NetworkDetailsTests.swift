@@ -63,18 +63,18 @@ struct NettopTests {
 
     @MainActor
     @Test("nettop on this machine takes a baseline first, then measures")
-    func live() async {
+    func live() async throws {
         let sampler = ProcessSampler()
-        let first = await withCheckedContinuation { continuation in
-            sampler.readNetwork(limit: 50) { continuation.resume(returning: $0) }
+        func read() async -> [NetworkAppUsage]? {
+            await withCheckedContinuation { (done: CheckedContinuation<[NetworkAppUsage]?, Never>) in
+                sampler.readNetwork(limit: 50) { done.resume(returning: $0) }
+            }
         }
+        let first = await read()
         #expect(first == nil)
-        try? await Task.sleep(for: .milliseconds(300))
-        let second = await withCheckedContinuation { continuation in
-            sampler.readNetwork(limit: 50) { continuation.resume(returning: $0) }
-        }
-        let apps = try? #require(second)
-        #expect(apps?.allSatisfy { $0.downloadPerSecond >= 0 && $0.uploadPerSecond >= 0 } == true)
+        try await Task.sleep(for: .milliseconds(300))
+        let apps = try #require(await read())
+        #expect(apps.allSatisfy { $0.downloadPerSecond >= 0 && $0.uploadPerSecond >= 0 })
     }
 }
 

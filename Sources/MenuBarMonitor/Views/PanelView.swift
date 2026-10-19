@@ -182,8 +182,8 @@ struct PanelView: View {
         Divider()
         PanelSection {
             GroupTitle("Connection history")
-            ConnectivityStrip(entries: store.connectionHistory.entries,
-                              capacity: ConnectionHistory.length)
+            ConnectionGrid(entries: store.connectionHistory.entries,
+                           capacity: ConnectionHistory.length)
             HStack {
                 let span = Double(ConnectionHistory.length) * settings.refreshInterval
                 Text("\(Format.uptime(span)) ago")

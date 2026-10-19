@@ -59,23 +59,31 @@ struct StackedBar: View {
     }
 }
 
-/// One tick per reading, newest on the right: quiet while macOS had a connection, red
-/// when it had none, fainter still before the first reading.
-struct ConnectivityStrip: View {
+/// One square per reading in three rows, read like text: oldest top left, newest bottom
+/// right. Quiet while macOS had a connection, red when it had none, fainter still
+/// before the first reading.
+struct ConnectionGrid: View {
     var entries: [Bool]
     var capacity: Int
+    var rows = 3
 
     var body: some View {
+        let columns = capacity / rows
         let offset = capacity - entries.count
-        HStack(spacing: 1) {
-            ForEach(0..<capacity, id: \.self) { slot in
-                let index = slot - offset
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(index < 0 ? Color.primary.opacity(0.06)
-                          : entries[index] ? Color.primary.opacity(0.22) : Palette.critical)
+        VStack(spacing: 2) {
+            ForEach(0..<rows, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(0..<columns, id: \.self) { column in
+                        let index = row * columns + column - offset
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(index < 0 ? Color.primary.opacity(0.06)
+                                  : entries[index] ? Color.primary.opacity(0.22)
+                                  : Palette.critical)
+                            .frame(height: 7)
+                    }
+                }
             }
         }
-        .frame(height: 10)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Connected at \(entries.filter { $0 }.count) of the last "
                             + "\(entries.count) readings")

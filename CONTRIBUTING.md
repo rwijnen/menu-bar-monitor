@@ -82,7 +82,7 @@ Sources/MenuBarMonitor/
     PanelView         one metric's dropdown
     SettingsView      the settings window, with a live preview of each style
     Sparkline         the graph shape, the mini bar and the memory bar
-    Bars              per-core bars, the stacked memory bar and the connection strip
+    Bars              per-core bars, the stacked memory bar and the connection history
     Theme             the palette and the warning colours
   App/
     main              starts the app, or a developer command
