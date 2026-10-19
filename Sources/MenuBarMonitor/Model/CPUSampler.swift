@@ -20,18 +20,25 @@ final class CPUSampler {
         guard previous.count == current.count else { return nil }
 
         var user: UInt64 = 0, system: UInt64 = 0, idle: UInt64 = 0
+        var cores: [Double] = []
         for (old, new) in zip(previous, current) {
             // Counters are 32-bit and wrap; wrapping subtraction keeps the delta right.
-            user += UInt64(new.user &- old.user) + UInt64(new.nice &- old.nice)
-            system += UInt64(new.system &- old.system)
-            idle += UInt64(new.idle &- old.idle)
+            let coreUser = UInt64(new.user &- old.user) + UInt64(new.nice &- old.nice)
+            let coreSystem = UInt64(new.system &- old.system)
+            let coreIdle = UInt64(new.idle &- old.idle)
+            user += coreUser
+            system += coreSystem
+            idle += coreIdle
+            let coreTotal = coreUser + coreSystem + coreIdle
+            let busy = Double(coreUser + coreSystem)
+            cores.append(coreTotal > 0 ? busy / Double(coreTotal) * 100 : 0)
         }
         let total = Double(user + system + idle)
         guard total > 0 else { return nil }
         let userPct = Double(user) / total * 100
         let systemPct = Double(system) / total * 100
         return CPUReading(total: userPct + systemPct, user: userPct, system: systemPct,
-                          coreCount: current.count)
+                          coreCount: current.count, cores: cores)
     }
 
     private func readTicks() -> [Ticks]? {

@@ -137,19 +137,21 @@ system is compressing memory and using swap to keep up. Activity Monitor's Memor
 the same thing as its pressure graph. Turn off **Colour warnings** if you would rather not
 see it.
 
-**The busiest apps leave out system processes**
-Reading another user's processes needs root, and this app runs with no privileges. Your
-own apps are all there; `WindowServer`, `kernel_task` and other system daemons are not.
-Activity Monitor shows them because it has a privileged helper.
+**An app shows more than 100%**
+App figures are per core, as in Activity Monitor and Stats: 100% is one core kept busy, so
+an app using four cores shows about 400% while the CPU total above it says 25% on a
+sixteen-core Mac. An app's helper processes are added in, so it can be higher than any of
+its processes in Activity Monitor.
 
-**App CPU looks low next to Activity Monitor**
-Activity Monitor gives each app's share of *one* core, so a busy app can show 250%. Menu
-Bar Monitor gives its share of the whole machine, so the list adds up to the CPU total
-above it. On a ten-core Mac, 250% there is 25% here.
+**Temperature or clock speed shows "—"**
+Apple publishes no interface for either on Apple silicon, so they come from undocumented
+ones that need no root. They are not there on Intel Macs or in virtual machines, and a
+macOS update could take them away. Everything else keeps working.
 
-**The dropdown says "Measuring apps…"**
-CPU use is the difference between two readings, so the first one after launch has nothing
-to compare against. It fills in after one update interval.
+**The CPU dropdown says "Measuring…"**
+The process list comes from running `ps` when the dropdown opens, and takes a moment to
+arrive. The clock speed is the difference between two readings, so it appears about half a
+second later.
 
 **`./build.sh: Permission denied`**
 `chmod +x build.sh`.

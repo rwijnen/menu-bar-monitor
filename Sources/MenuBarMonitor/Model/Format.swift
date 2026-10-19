@@ -45,4 +45,32 @@ enum Format {
         let number = value < 99.95 ? String(format: "%.1f", value) : "\(Int(value.rounded()))"
         return "\(number) \(units[unit])"
     }
+
+    static func temperature(_ celsius: Double?) -> String {
+        celsius.map { "\(Int($0.rounded()))°C" } ?? "—"
+    }
+
+    static func megahertz(_ mhz: Double?) -> String {
+        mhz.map { "\(Int($0.rounded())) MHz" } ?? "—"
+    }
+
+    /// For the frequency gauge, where "1770 MHz" would not fit.
+    static func gigahertz(_ mhz: Double?) -> String {
+        mhz.map { String(format: "%.2f", $0 / 1000) } ?? "—"
+    }
+
+    static func load(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+
+    /// "6 hours, 17 minutes": the two largest units, as Stats and `uptime` put it. In
+    /// English whatever the locale, like the rest of the interface.
+    static func uptime(_ seconds: TimeInterval) -> String {
+        let minutes = Int(max(seconds, 0)) / 60
+        let parts = [(minutes / 1440, "day"), (minutes / 60 % 24, "hour"),
+                     (minutes % 60, "minute")]
+        let shown = parts.drop { $0.0 == 0 }.prefix(2).filter { $0.0 > 0 }
+        guard !shown.isEmpty else { return "less than a minute" }
+        return shown.map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }.joined(separator: ", ")
+    }
 }

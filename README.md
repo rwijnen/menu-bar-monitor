@@ -51,11 +51,15 @@ click anywhere else closes it. Hold ⌘ and drag any of them to put them in anot
 
 | CPU | Memory | Network |
 |---|---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: total usage, a one-minute graph, the user and system split, and the three busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: memory used of 16 GB, its pressure, the app, wired and compressed breakdown, and swap"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: gauges for temperature, usage and clock speed, a one-minute graph, a bar per core, the details, load average and frequency, and the eight busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: memory used of 16 GB, its pressure, the app, wired and compressed breakdown, and swap"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
 
-- **CPU** — the total, split into user and system time, a minute of history, and the
-  three busiest apps. Helper processes count under the app responsible for them, so
-  Safari's web pages count as Safari and a build counts as Xcode.
+- **CPU** — temperature, usage and clock speed as three gauges; a minute of history and
+  a bar for each core, coloured by kind (Performance and Super cores on an M5 Pro);
+  system, user and idle time and each kind of core's usage; uptime; the load average
+  over 1, 5 and 15 minutes; the clock speed of each kind of core; and the eight busiest
+  apps, system processes included. A helper process counts under the app responsible
+  for it, so Safari's web pages count as Safari and a build counts as Xcode. App figures
+  are per core, as in Activity Monitor: 100% is one core kept busy.
 - **Memory** — what Activity Monitor calls *Memory Used*: app, wired and compressed
   memory, out of what is installed. Then macOS's own pressure level, and swap.
 - **Network** — download and upload on the interface macOS is routing through, its name
@@ -79,17 +83,22 @@ system's own login items.
 
 | Metric | Source |
 |---|---|
-| CPU | `host_processor_info` tick counts across all cores, compared between readings |
+| CPU, per core | `host_processor_info` tick counts, compared between readings |
+| Kinds of core | `sysctl hw.perflevel…` |
+| CPU temperature | Apple silicon's die sensors (`PMU tdie…`) through IOHID — undocumented |
+| Clock speed | Time at each clock step from IOReport, weighted by the power manager's frequency tables — undocumented |
+| Load average, uptime | `getloadavg`, `kern.boottime` |
 | Memory used | `host_statistics64`: app + wired + compressed, as Activity Monitor counts it |
 | Memory pressure | `kern.memorystatus_vm_pressure_level` |
 | Swap | `vm.swapusage` |
 | Network | 64-bit byte counters from `sysctl NET_RT_IFLIST2`, on the primary interface only |
-| Busiest apps | `proc_pid_rusage` per process, grouped under the responsible app |
+| Busiest apps | `/bin/ps`, which can see every user's processes, grouped under the responsible app |
 
-The readings were checked against `top`, `vm_stat` and `sysctl` on the machine it was
-built on. Two choices differ from Activity Monitor on purpose: an app's CPU is its share of
-the *whole* machine, so the list adds up to the total above it, and only the primary
-interface is measured, so traffic through a VPN is not counted twice. The reasoning is in
+The readings were checked against `top`, `vm_stat`, `sysctl` and `uptime` on the machine
+it was built on, and the temperature against Stats. Temperature and clock speed have no public interface on Apple
+silicon; the sources used need no root, but Apple does not document them, so a future
+macOS may stop answering and the gauge then shows "—". Only the primary network interface
+is measured, so traffic through a VPN is not counted twice. The reasoning is in
 [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
 ## Light by design
@@ -102,6 +111,10 @@ That figure is what is left after one measurement changed the code. The first ve
 its graphs with SwiftUI's `Canvas` and used 94 MB — 69 MB of it GPU memory, because
 `Canvas` brings up Metal even for a graph 32 points wide. The graphs are plain shapes now.
 
+The CPU dropdown's extras — temperature, clock speed, load and the process list — are read
+only while that dropdown is open. The process list means running `ps` once a reading,
+about 20 ms of CPU each time; with the dropdown closed it never runs.
+
 ## Why it is safe to run
 
 Three rules, which [CONTRIBUTING.md](CONTRIBUTING.md#what-it-is-and-is-not) holds every
@@ -109,9 +122,10 @@ change to:
 
 - **It never goes online.** There is no networking code. The network graph reads the
   byte counters the kernel already keeps; it does not send anything.
-- **It needs no privileges.** No root helper, no kernel extension, no entitlements, no
-  permission prompts. That is also why system daemons do not appear among the busiest
-  apps: they belong to other users, and an ordinary process cannot read them.
+- **It needs no privileges of its own.** No root helper, no kernel extension, no
+  entitlements, no permission prompts. To list other users' processes it runs `/bin/ps`,
+  which macOS ships with that right, with fixed arguments and only while the CPU dropdown
+  is open.
 - **It writes only its own preferences** — your settings and today's traffic totals.
 
 More in [SECURITY.md](SECURITY.md), including what is accepted rather than solved.

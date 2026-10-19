@@ -11,7 +11,25 @@ final class MetricsStore {
     private(set) var cpu = CPUReading()
     private(set) var memory = MemoryReading()
     private(set) var network = NetworkReading()
-    private(set) var topApps: [AppUsage] = []
+    private(set) var cpuDetails = CPUDetails()
+    /// Which kind of core each core is. Set from `sysctl` at launch; the screenshot
+    /// generator replaces it with a fixed layout.
+    var coreGroups = CoreLayout.current(coreCount: ProcessInfo.processInfo.processorCount)
+
+    /// The metric whose dropdown is open. The readings only a dropdown shows are taken
+    /// only while it is open, and straight away when it opens, so it is never blank.
+    var detailMetric: Metric? {
+        didSet {
+            guard detailMetric == .cpu, oldValue != .cpu else { return }
+            sampleCPUDetails()
+            // The clock speed is a difference between two readings: take the second
+            // one soon rather than a whole interval later.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard self?.detailMetric == .cpu else { return }
+                self?.sampleCPUDetails(includingProcesses: false)
+            }
+        }
+    }
 
     private(set) var cpuHistory: [Double] = []
     private(set) var memoryHistory: [Double] = []
@@ -29,7 +47,9 @@ final class MetricsStore {
     @ObservationIgnored private let cpuSampler = CPUSampler()
     @ObservationIgnored private let memorySampler = MemorySampler()
     @ObservationIgnored private let networkSampler = NetworkSampler()
-    @ObservationIgnored private let appSampler = AppSampler()
+    @ObservationIgnored private let temperatureSampler = TemperatureSampler()
+    @ObservationIgnored private let frequencySampler = FrequencySampler()
+    @ObservationIgnored private let processSampler = ProcessSampler()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var todayKey: String
     @ObservationIgnored private var readingsSinceSave = 0
@@ -65,13 +85,32 @@ final class MetricsStore {
     }
 
     func sample() {
-        let cpuReading = cpuSampler.read()
-        record(cpu: cpuReading,
+        record(cpu: cpuSampler.read(),
                memory: memorySampler.read(),
-               network: networkSampler.read(),
-               apps: appSampler.read(limit: 3,
-                                     coreCount: cpuReading?.coreCount ?? cpu.coreCount))
+               network: networkSampler.read())
+        if detailMetric == .cpu { sampleCPUDetails() }
     }
+
+    /// The CPU dropdown's extra readings. The process list comes from running `ps`,
+    /// which arrives a moment later.
+    private func sampleCPUDetails(includingProcesses: Bool = true) {
+        var details = cpuDetails
+        details.temperature = temperatureSampler.read()
+        details.frequency = frequencySampler.read() ?? details.frequency
+        details.loadAverage = SystemInfo.loadAverage()
+        details.uptime = SystemInfo.uptime()
+        record(cpuDetails: details)
+        guard includingProcesses else { return }
+        processSampler.read(limit: Self.processRowCount) { [weak self] apps in
+            guard let self else { return }
+            var details = cpuDetails
+            details.processes = apps
+            details.processesMeasured = true
+            record(cpuDetails: details)
+        }
+    }
+
+    static let processRowCount = 8
 
     /// Applies one round of readings. Separate from `sample()` so the tests and
     /// the screenshot generator can feed it known values instead of live ones.
@@ -79,7 +118,7 @@ final class MetricsStore {
     /// - Parameter cpu: nil on the very first round, which has nothing to compare
     ///   against; the previous CPU reading is kept and no history point is added.
     func record(cpu cpuReading: CPUReading?, memory memoryReading: MemoryReading,
-                network networkReading: NetworkReading, apps: [AppUsage], now: Date = Date()) {
+                network networkReading: NetworkReading, now: Date = Date()) {
         if let cpuReading {
             cpu = cpuReading
             Self.append(cpuReading.total, to: &cpuHistory)
@@ -93,8 +132,11 @@ final class MetricsStore {
         Self.append(networkReading.uploadPerSecond, to: &uploadHistory)
         addTraffic(down: networkReading.downloadDelta, up: networkReading.uploadDelta, now: now)
 
-        topApps = apps
         onUpdate?()
+    }
+
+    func record(cpuDetails details: CPUDetails) {
+        cpuDetails = details
     }
 
     /// Upper bound for network graphs over the last `count` readings. The 10 KB/s

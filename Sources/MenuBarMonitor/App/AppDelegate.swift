@@ -144,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func statusItemClicked(_ sender: Any?) {
         guard let clicked = items.values.first(where: { $0.owns(sender) }) else { return }
         let change = dropdown.click(clicked.metric)
+        store.detailMetric = dropdown.open
         if let close = change.close { items[close]?.hidePanel() }
         if let open = change.open {
             items[open]?.showPanel()
@@ -155,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closeDropdown() {
         if let open = dropdown.dismiss() { items[open]?.hidePanel() }
+        store.detailMetric = nil
         stopDismissMonitors()
     }
 

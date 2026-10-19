@@ -7,6 +7,14 @@ enum Palette {
     static let upload = Color(hex: 0x888780)
     static let warning = Color(hex: 0xEF9F27)
     static let critical = Color(hex: 0xE24B4A)
+
+    // The CPU dropdown's own colours: time spent in the kernel, the gauges that are not
+    // usage, and one colour per kind of core, slowest first.
+    static let system = Color(hex: 0xD4537E)
+    static let gauge = Color(hex: 0x378ADD)
+    static let coreGroups = [cpu, Color(hex: 0xEF9F27), Color(hex: 0x1D9E75)]
+
+    static func coreGroup(_ index: Int) -> Color { coreGroups[index % coreGroups.count] }
 }
 
 extension Color {

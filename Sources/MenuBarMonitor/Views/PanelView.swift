@@ -34,30 +34,115 @@ struct PanelView: View {
         .frame(width: Self.width)
     }
 
+    // MARK: - CPU
+
     private var cpuSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: Metric.cpu.title, symbol: Metric.cpu.symbol) {
-                Text(Format.percent(store.cpu.total))
-                    .foregroundStyle(severity.cpuIsHot ? Palette.critical : .primary)
+        let details = store.cpuDetails
+        let groupFrequencies = details.frequency?.byGroup(store.coreGroups) ?? []
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(Metric.cpu.title, systemImage: Metric.cpu.symbol)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(SystemInfo.chipName ?? "")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
+
+            cpuGauges(details)
+
+            SectionTitle("Usage history")
             Sparkline(values: store.cpuHistory, maxValue: 100,
-                      capacity: MetricsStore.historyLength,
-                      color: severity.cpuColor)
-                .frame(height: 36)
+                      capacity: MetricsStore.historyLength, color: severity.cpuColor)
+                .frame(height: 48)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.05)))
+            CoreBars(cores: store.cpu.cores, groups: store.coreGroups)
+
+            SectionTitle("Details")
             VStack(spacing: 3) {
-                let user = Format.percent(store.cpu.user)
-                let system = Format.percent(store.cpu.system)
-                DetailRow(label: "User / system", value: "\(user) / \(system)")
-                // Always three rows, so the panel keeps the same height.
-                ForEach(0..<3, id: \.self) { index in
-                    if index < store.topApps.count {
-                        AppRow(app: store.topApps[index])
+                DetailRow(label: "System", value: Format.percent(store.cpu.system),
+                          dot: Palette.system)
+                DetailRow(label: "User", value: Format.percent(store.cpu.user),
+                          dot: Palette.cpu)
+                DetailRow(label: "Idle", value: Format.percent(100 - store.cpu.total),
+                          dot: Color.primary.opacity(0.25))
+                if store.coreGroups.count > 1 {
+                    ForEach(Array(store.coreGroups.enumerated()), id: \.offset) { index, group in
+                        DetailRow(label: "\(group.name) cores",
+                                  value: group.usage(in: store.cpu.cores)
+                                    .map(Format.percent) ?? "—",
+                                  dot: Palette.coreGroup(index))
+                    }
+                }
+                DetailRow(label: "Uptime", value: Format.uptime(details.uptime))
+            }
+
+            SectionTitle("Average load")
+            VStack(spacing: 3) {
+                ForEach(Array(zip(["1 minute", "5 minutes", "15 minutes"],
+                                  details.loadAverage).enumerated()), id: \.offset) { _, row in
+                    DetailRow(label: row.0, value: Format.load(row.1))
+                }
+            }
+
+            SectionTitle("Frequency")
+            VStack(spacing: 3) {
+                // No time at any clock step means the cores were idle, not unknown.
+                DetailRow(label: "All cores",
+                          value: details.frequency.map { $0.allCores.map(Format.megahertz)
+                                                            ?? "Idle" } ?? "—")
+                ForEach(Array(groupFrequencies.enumerated()), id: \.offset) { index, row in
+                    DetailRow(label: "\(row.group.name) cores",
+                              value: row.mhz.map(Format.megahertz) ?? "Idle",
+                              dot: Palette.coreGroup(index))
+                }
+            }
+
+            SectionTitle("Top processes")
+            VStack(spacing: 3) {
+                // Always the same number of rows, so the dropdown keeps its height.
+                ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
+                    if index < details.processes.count {
+                        AppRow(app: details.processes[index])
                     } else {
-                        DetailRow(label: index == 0 ? "Measuring apps…" : " ", value: "")
+                        DetailRow(label: index == 0 && !details.processesMeasured
+                                    ? "Measuring…" : " ",
+                                  value: "")
                     }
                 }
             }
         }
+    }
+
+    private func cpuGauges(_ details: CPUDetails) -> some View {
+        let temperature = details.temperature
+        let hot = settings.colorWarnings && (temperature ?? 0) > 95
+        let warm = settings.colorWarnings && (temperature ?? 0) > 80
+        let frequency = details.frequency
+        // Bottom-aligned, so the three captions share a line under rings of two sizes.
+        return HStack(alignment: .bottom) {
+            RingGauge(segments: [.init(fraction: (temperature ?? 0) / 100,
+                                       color: hot ? Palette.critical
+                                           : warm ? Palette.warning : Palette.gauge)],
+                      value: Format.temperature(temperature), caption: "Temperature")
+            Spacer()
+            RingGauge(segments: [.init(fraction: store.cpu.system / 100, color: Palette.system),
+                                 .init(fraction: store.cpu.user / 100,
+                                       color: severity.cpuIsHot ? Palette.critical
+                                           : Palette.cpu)],
+                      value: Format.percent(store.cpu.total), caption: "Usage",
+                      diameter: 80, lineWidth: 8)
+            Spacer()
+            RingGauge(segments: [.init(fraction: (frequency?.allCores ?? 0)
+                                          / (frequency?.maxMHz ?? 1),
+                                       color: Palette.gauge)],
+                      value: Format.gigahertz(frequency?.allCores),
+                      unit: frequency?.allCores == nil ? nil : "GHz", caption: "Frequency")
+        }
+        .padding(.horizontal, 6)
     }
 
     private var memorySection: some View {
@@ -161,13 +246,35 @@ private struct SectionHeader<Value: View>: View {
     }
 }
 
+private struct SectionTitle: View {
+    let title: String
+
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+    }
+}
+
 private struct DetailRow: View {
     let label: String
     let value: String
     var valueColor: Color?
+    /// A colour key, matching the gauge or bars the row describes.
+    var dot: Color?
 
     var body: some View {
-        HStack {
+        HStack(spacing: 6) {
+            if let dot {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(dot)
+                    .frame(width: 8, height: 8)
+            }
             Text(label).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             Text(value).foregroundStyle(valueColor ?? .primary).monospacedDigit().lineLimit(1)

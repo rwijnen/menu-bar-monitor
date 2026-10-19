@@ -6,6 +6,26 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-19
+
+### Added
+
+- **The CPU dropdown shows much more**, laid out like Stats: gauges for temperature, usage
+  and clock speed; a minute of history above a bar for each core, coloured by kind
+  (Performance and Super cores on an M5 Pro, Efficiency and Performance on earlier chips);
+  system, user and idle time and each kind of core's usage; uptime; the load average over
+  1, 5 and 15 minutes; and the clock speed of all cores and of each kind. Temperature and
+  clock speed come from interfaces Apple does not document and show "—" where those do
+  not answer, such as on Intel Macs.
+
+### Changed
+
+- **The busiest apps include system processes** such as `WindowServer` and `kernel_task`,
+  and the list is eight long. It comes from `ps`, which runs only while the CPU dropdown is
+  open. Helper processes are still counted under their app.
+- **App CPU is per core, as in Activity Monitor**: 100% is one core kept busy, so a busy
+  app can pass 100%. It used to be a share of the whole machine.
+
 ## [1.1.0] — 2026-10-19
 
 ### Changed
@@ -38,6 +58,7 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/rwijnen/menu-bar-monitor/releases/tag/v1.0.0
