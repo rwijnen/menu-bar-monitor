@@ -75,11 +75,15 @@ enum DevTools {
                        scheme: scheme, background: menuBar,
                        to: directory.appendingPathComponent(file))
             }
-            let dropdown = PanelView(store: store, settings: settings, actions: actions)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            renderAppKit(dropdown, appearance: appearance,
-                         to: directory.appendingPathComponent("dropdown-\(name).png"))
+            for metric in Metric.allCases {
+                let dropdown = PanelView(metric: metric, store: store, settings: settings,
+                                         actions: actions)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                let file = "dropdown-\(metric.rawValue)-\(name).png"
+                renderAppKit(dropdown, appearance: appearance,
+                             to: directory.appendingPathComponent(file))
+            }
             renderAppKit(SettingsView(settings: settings, store: store), appearance: appearance,
                          to: directory.appendingPathComponent("settings-\(name).png"))
         }

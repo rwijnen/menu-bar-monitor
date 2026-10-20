@@ -53,6 +53,33 @@ final class AppSettings {
 
     var visibleMetricCount: Int { [showCPU, showMemory, showNetwork].filter { $0 }.count }
 
+    /// The metrics with an item in the menu bar, in reading order.
+    var visibleMetrics: [Metric] { Metric.allCases.filter(isVisible) }
+
+    func isVisible(_ metric: Metric) -> Bool {
+        switch metric {
+        case .cpu: showCPU
+        case .memory: showMemory
+        case .network: showNetwork
+        }
+    }
+
+    /// Whether `metric` could be switched off. The last visible one cannot: with no
+    /// item left in the menu bar there would be no way back into Settings.
+    func canHide(_ metric: Metric) -> Bool {
+        !isVisible(metric) || visibleMetricCount > 1
+    }
+
+    /// Shows or hides `metric`'s item. Hiding the last visible one is ignored.
+    func setVisible(_ metric: Metric, _ visible: Bool) {
+        guard visible || canHide(metric) else { return }
+        switch metric {
+        case .cpu: showCPU = visible
+        case .memory: showMemory = visible
+        case .network: showNetwork = visible
+        }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         style = defaults.string(forKey: Key.style).flatMap(MenuBarStyle.init(rawValue:))
