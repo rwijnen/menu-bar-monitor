@@ -128,9 +128,12 @@ enum DevTools {
             let used = UInt64((0.61 + 0.015 * sin(t / 9)) * Double(16 * gib))
             let down = max(0, 1_100_000 + 600_000 * sin(t / 3) + 250_000 * sin(t * 2.3))
             let up = max(0, 110_000 + 50_000 * sin(t / 2.5 + 1))
-            let cores = (0..<15).map { core in
-                max(0, min(100, cpu * (core < 10 ? 0.6 : 1.8)
-                    + 9 * sin(t / 3 + Double(core) * 1.3)))
+            // Typed and split up: Xcode 26's compiler gives up inferring this as one
+            // expression, though newer ones manage.
+            let cores: [Double] = (0..<15).map { (core: Int) -> Double in
+                let share: Double = core < 10 ? 0.6 : 1.8
+                let wave: Double = 9 * sin(t / 3 + Double(core) * 1.3)
+                return max(0, min(100, cpu * share + wave))
             }
             store.record(
                 cpu: CPUReading(total: cpu, user: cpu * 0.62, system: cpu * 0.38,
