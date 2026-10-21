@@ -68,8 +68,7 @@ click anywhere else closes it. Hold ⌘ and drag any of them to put them in anot
 - **Network** — download and upload on the interface macOS is routing through, its name
   and address, and today's totals, which survive a restart and start again at midnight.
 
-Each ends with **Settings**, **Open Activity Monitor** and **Quit**. On macOS 26 and later
-the dropdowns sit on the system's glass material.
+Each ends with **Settings**, **Open Activity Monitor** and **Quit**.
 
 ## Settings
 
@@ -180,5 +179,5 @@ anything it gets wrong are welcome.
 
 The screenshots above are rendered offscreen from the app's own view code, with demo data
 rather than a real machine's, because the machine it was built on has no screen-recording
-permission. They show the dropdown on a plain background rather than its glass, and the
+permission. They show the dropdowns on a plain background rather than their material, and the
 menu bar item without the rest of the menu bar.

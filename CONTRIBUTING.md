@@ -48,9 +48,7 @@ open build/MenuBarMonitor.app
 ```
 
 You need macOS 14+ and a Swift 6 toolchain. `build.sh` uses only `swift`, `codesign` and
-`iconutil`, all of which ship with the Command Line Tools. The dropdown's glass material
-needs the macOS 26 SDK (Swift 6.2 or later); an older toolchain builds the app with the
-standard popover material instead.
+`iconutil`, all of which ship with the Command Line Tools.
 
 ## The layout of the code
 
@@ -84,7 +82,7 @@ Sources/MenuBarMonitor/
   App/
     main              starts the app, or a developer command
     AppDelegate       a status item per metric, which dropdown is open, settings
-    DropdownPanel     the borderless glass panel under the status item
+    DropdownPanel     the borderless panel under the status item
     DevTools          --sample and --snapshot
 Tools/make-icon.swift draws the icon with Core Graphics
 ```
@@ -133,10 +131,11 @@ swift build -c release && .build/release/MenuBarMonitor --snapshot Docs
 ```
 
 That is how the screenshots in `Docs/` are made, so regenerate them when a view changes.
-Two things it cannot show: the glass behind the dropdown (an offscreen capture has
-nothing behind it to blur, and draws large semibold text almost black in dark mode, so the
-dropdown is rendered on a plain background instead), and the item's place among the other
-menu bar icons. For those, run the app and look.
+Two things it cannot show: the material behind the dropdowns, which blurs whatever is on
+screen behind them — offscreen there is nothing, so the dropdowns are rendered on a plain
+background — and the items' place among the other menu bar icons. For those, run the app
+and look, in dark mode as well as light, and over a bright window as well as a dark one:
+that combination is how the first dropdown, on Liquid Glass, turned out unreadable.
 
 **`--sample`** prints four rounds of live readings, a second apart. Compare them with the
 system's own tools:

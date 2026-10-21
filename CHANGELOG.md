@@ -6,6 +6,15 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-10-19
+
+### Fixed
+
+- **The dropdowns can be read in dark mode.** On macOS 26 they sat on Liquid Glass, which
+  over a bright window stayed light grey while the text stayed white. They now use the
+  popover material, which darkens in dark mode whatever is behind it — as on earlier
+  versions of macOS, where this was already the case.
+
 ## [1.3.0] — 2026-10-19
 
 ### Added
@@ -76,7 +85,8 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.0.0...v1.1.0
