@@ -46,22 +46,6 @@ struct SamplerTests {
         }
     }
 
-    @Test("the busiest apps are sorted, limited, and share one CPU's worth of capacity")
-    func apps() {
-        let sampler = AppSampler()
-        let cores = ProcessInfo.processInfo.processorCount
-        #expect(sampler.read(limit: 3, coreCount: cores).isEmpty)
-
-        // This test process is readable by its own user, so the list cannot be empty.
-        burnCPU(for: 0.3)
-        let apps = sampler.read(limit: 3, coreCount: cores)
-        #expect(!apps.isEmpty)
-        #expect(apps.count <= 3)
-        #expect(apps.map(\.cpu) == apps.map(\.cpu).sorted(by: >))
-        #expect(apps.allSatisfy { $0.cpu >= 0 && !$0.name.isEmpty })
-        #expect(apps.map(\.cpu).reduce(0, +) <= 100.5)
-    }
-
     private func burnCPU(for seconds: TimeInterval) {
         let end = Date().addingTimeInterval(seconds)
         var value = 0.5

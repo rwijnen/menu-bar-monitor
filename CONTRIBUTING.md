@@ -23,10 +23,10 @@ merged:
    is a counter the kernel already keeps on your Mac; the network graph reads byte
    counters, it does not send anything. No update check, no telemetry, no remote images
    or fonts. A feature that opens a connection will not be merged.
-2. **It needs no privileges.** No root helper, no kernel extension, no entitlements, no
-   permission prompts. It reads only what any process you run may read — which is why
-   system daemons are missing from the busiest-apps list, and that is accepted rather than
-   worked around.
+2. **It needs no privileges of its own.** No root helper, no kernel extension, no
+   entitlements, no permission prompts. The one exception to reading only what an ordinary
+   process may is the process list, which comes from `/bin/ps` — installed setuid root to
+   see every user's processes — run with fixed arguments while the CPU dropdown is open.
 3. **It costs less than what it measures.** About 18 MB of memory and under 1% CPU at the
    default two-second interval. A change that raises either needs a measurement in the
    pull request and a good reason (see [Measuring the cost](#measuring-the-cost)).
@@ -59,7 +59,11 @@ Sources/MenuBarMonitor/
     CPUSampler        per-core tick counters → usage, from host_processor_info
     MemorySampler     host_statistics64, swap and the pressure level
     NetworkSampler    64-bit byte counters on the primary interface, its name and address
-    AppSampler        CPU time per process, grouped under the app responsible for it
+    CoreLayout        which cores are which kind (Performance, Super…), from sysctl;
+                      SystemInfo: load average, uptime, the chip's name
+    TemperatureSampler the CPU die sensors, through undocumented IOHID calls
+    FrequencySampler  clock speed per cluster, from IOReport and the power manager
+    ProcessSampler    `ps` for every process, grouped under the app responsible for it
     Readings          the values the samplers return
     Metric            CPU, memory and network: one menu bar item each
                       DropdownState: which item's dropdown is open (at most one)
@@ -73,6 +77,7 @@ Sources/MenuBarMonitor/
     PanelView         one metric's dropdown
     SettingsView      the settings window, with a live preview of each style
     Sparkline         the graph shape, the mini bar and the memory bar
+    Gauges            the CPU dropdown's ring gauges and per-core bars
     Theme             the palette and the warning colours
   App/
     main              starts the app, or a developer command
@@ -152,7 +157,8 @@ top -l 2 -s 10 -pid "$(pgrep -x MenuBarMonitor)" -stats pid,cpu | tail -1
 ```
 
 Look at the `graphics` lines as well as the total: GPU memory the process owns counts
-against it. Switching the sparklines from `Canvas` to shapes took the footprint from 94 MB
+against it. The CPU dropdown's extras run only while it is open, so measure once with
+every dropdown closed and once with the CPU dropdown open. Switching the sparklines from `Canvas` to shapes took the footprint from 94 MB
 to 18 MB, and almost all of the difference was there.
 
 ## Style

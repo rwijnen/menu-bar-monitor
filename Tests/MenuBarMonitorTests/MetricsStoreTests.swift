@@ -30,7 +30,7 @@ struct MetricsStoreTests {
                      memory: MemoryReading(total: 100, used: 50),
                      network: NetworkReading(downloadPerSecond: down, uploadPerSecond: 0,
                                              downloadDelta: downloaded, uploadDelta: uploaded),
-                     apps: [], now: now)
+                     now: now)
     }
 
     @Test("history keeps the last minute of readings")

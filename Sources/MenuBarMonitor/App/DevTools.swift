@@ -23,17 +23,34 @@ enum DevTools {
 
     // MARK: - Live readings
 
-    /// For comparing against `top -l 2`, `vm_stat`, `sysctl vm.swapusage` and
-    /// `netstat -ib`. The first round has no CPU or network figures yet, since
-    /// both are differences between two readings.
+    /// For comparing against `top -l 2`, `vm_stat`, `sysctl vm.swapusage`, `uptime` and
+    /// Stats or Activity Monitor. The first round has no CPU, clock or network figures
+    /// yet, since all three are differences between two readings. Waits by running the
+    /// run loop rather than sleeping, because the process list arrives on it.
     private static func printSamples() {
         let store = MetricsStore(settings: AppSettings())
+        store.detailMetric = .cpu
         for _ in 0..<4 {
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
             store.sample()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
             let cpu = store.cpu, memory = store.memory, network = store.network
+            let details = store.cpuDetails
+            let groups = store.coreGroups.map { group in
+                "\(group.name) \(group.usage(in: cpu.cores).map(Format.percent) ?? "-")"
+            }
+            let clocks = (details.frequency?.byGroup(store.coreGroups) ?? []).map {
+                "\($0.group.name) \(Format.megahertz($0.mhz))"
+            }
             print("""
             cpu \(Format.percent(cpu.total)) (user \(Format.percent(cpu.user)), \
-            system \(Format.percent(cpu.system)), \(cpu.coreCount) cores)
+            system \(Format.percent(cpu.system)), \(cpu.coreCount) cores: \
+            \(groups.joined(separator: ", ")))
+            cpu temperature \(Format.temperature(details.temperature)), \
+            clock \(Format.megahertz(details.frequency?.allCores)) \
+            (\(clocks.joined(separator: ", "))), \
+            load \(details.loadAverage.map(Format.load).joined(separator: " ")), \
+            up \(Format.uptime(details.uptime))
             mem \(Format.gigabytes(memory.used))/\(Format.gigabytes(memory.total)) GB  \
             app \(Format.gigabytes(memory.app)) wired \(Format.gigabytes(memory.wired)) \
             compressed \(Format.gigabytes(memory.compressed)) \
@@ -41,11 +58,10 @@ enum DevTools {
             net \(network.interfaceDisplayName ?? "-") (\(network.interfaceName ?? "-")) \
             \(network.ipAddress ?? "-")  ↓ \(Format.rate(network.downloadPerSecond)) \
             ↑ \(Format.rate(network.uploadPerSecond))
-            apps \(store.topApps.map { "\($0.name) \(Format.finePercent($0.cpu))" }
+            apps \(details.processes.map { "\($0.name) \(Format.finePercent($0.cpu))" }
                 .joined(separator: ", "))
             ---
             """)
-            Thread.sleep(forTimeInterval: 1)
         }
     }
 
@@ -91,8 +107,8 @@ enum DevTools {
         print("Snapshots written to \(directory.path)")
     }
 
-    /// A minute of made-up readings: moderate CPU, memory at about 60% with no
-    /// pressure, and a download in progress.
+    /// A minute of made-up readings: moderate CPU on an M5 Pro's fifteen cores, memory at
+    /// about 60% with no pressure, and a download in progress.
     private static func demoStore(defaults: UserDefaults) -> MetricsStore {
         let now = Date()
         let gib: UInt64 = 1_073_741_824
@@ -102,13 +118,9 @@ enum DevTools {
         let store = MetricsStore(settings: AppSettings(defaults: defaults), defaults: defaults,
                                  now: now)
 
-        let apps = [("Xcode", "/Applications/Xcode.app", 12.4),
-                    ("Safari", "/Applications/Safari.app", 4.1),
-                    ("Mail", "/System/Applications/Mail.app", 1.2)]
-            .map { name, path, cpu in
-                AppUsage(id: path, name: name,
-                         icon: NSWorkspace.shared.icon(forFile: path), cpu: cpu)
-            }
+        // An M5 Pro's layout: ten Performance cores, then five Super cores.
+        store.coreGroups = [CoreGroup(name: "Performance", range: 0..<10),
+                            CoreGroup(name: "Super", range: 10..<15)]
 
         for index in 0..<MetricsStore.historyLength {
             let t = Double(index)
@@ -116,9 +128,16 @@ enum DevTools {
             let used = UInt64((0.61 + 0.015 * sin(t / 9)) * Double(16 * gib))
             let down = max(0, 1_100_000 + 600_000 * sin(t / 3) + 250_000 * sin(t * 2.3))
             let up = max(0, 110_000 + 50_000 * sin(t / 2.5 + 1))
+            // Typed and split up: Xcode 26's compiler gives up inferring this as one
+            // expression, though newer ones manage.
+            let cores: [Double] = (0..<15).map { (core: Int) -> Double in
+                let share: Double = core < 10 ? 0.6 : 1.8
+                let wave: Double = 9 * sin(t / 3 + Double(core) * 1.3)
+                return max(0, min(100, cpu * share + wave))
+            }
             store.record(
                 cpu: CPUReading(total: cpu, user: cpu * 0.62, system: cpu * 0.38,
-                                coreCount: 10),
+                                coreCount: 15, cores: cores),
                 memory: MemoryReading(total: 16 * gib, used: used, app: used - 4 * gib,
                                       wired: 2 * gib + gib / 5,
                                       compressed: 1 * gib + gib * 4 / 5,
@@ -126,8 +145,30 @@ enum DevTools {
                 network: NetworkReading(downloadPerSecond: down, uploadPerSecond: up,
                                         interfaceName: "en0", interfaceDisplayName: "Wi-Fi",
                                         ipAddress: "192.168.1.20"),
-                apps: apps, now: now)
+                now: now)
         }
+
+        let processes = [
+            ("WindowServer", nil, 47.9), ("Safari", "/Applications/Safari.app", 31.2),
+            ("Xcode", "/Applications/Xcode.app", 18.6),
+            ("Music", "/System/Applications/Music.app", 6.4),
+            ("Mail", "/System/Applications/Mail.app", 4.1), ("kernel_task", nil, 3.8),
+            ("Finder", "/System/Library/CoreServices/Finder.app", 2.2),
+            ("mds_stores", nil, 1.5),
+        ].map { name, path, cpu in
+            AppUsage(id: name, name: name,
+                     icon: path.map { NSWorkspace.shared.icon(forFile: $0) }, cpu: cpu)
+        }
+        store.record(cpuDetails: CPUDetails(
+            temperature: 45,
+            frequency: FrequencyReading(allCores: 1770, clusters: [
+                .init(mhz: 1344, maxMHz: 4380, coreCount: 10),
+                .init(mhz: 2623, maxMHz: 4608, coreCount: 5),
+            ]),
+            loadAverage: [6.85, 5.5, 4.03],
+            uptime: 6 * 3600 + 17 * 60,
+            processes: processes,
+            processesMeasured: true))
         return store
     }
 

@@ -13,8 +13,14 @@ flowchart TD
     S --> C["CPUSampler<br/>host_processor_info"]
     S --> M["MemorySampler<br/>host_statistics64, vm.swapusage,<br/>memory pressure level"]
     S --> N["NetworkSampler<br/>sysctl NET_RT_IFLIST2,<br/>SCDynamicStore"]
-    S --> A["AppSampler<br/>proc_pid_rusage"]
-    C & M & N & A --> R["MetricsStore.record(…)<br/>current values + a minute of history"]
+    C & M & N --> R["MetricsStore.record(…)<br/>current values + a minute of history"]
+    S -->|"only while the CPU<br/>dropdown is open"| D["CPU details"]
+    D --> Th["TemperatureSampler<br/>IOHID die sensors"]
+    D --> F["FrequencySampler<br/>IOReport + pmgr tables"]
+    D --> L["SystemInfo<br/>load average, uptime"]
+    D --> Ps["ProcessSampler<br/>/bin/ps, off the main thread"]
+    Th & F & L & Ps --> RD["MetricsStore.record(cpuDetails:)"]
+    RD -->|"@Observable"| P
     R -->|"@Observable"| L["MetricLabel × 3<br/>one per status item"]
     R -->|"@Observable"| P["PanelView<br/>in the open dropdown"]
     R -->|"@Observable"| V["SettingsView previews<br/>when open"]
@@ -35,7 +41,10 @@ and no app list: there is nothing yet to subtract. `MetricsStore` adds no histor
 for a missing CPU reading, so the graph does not start with a false zero.
 
 **`MetricsStore`** (`State/`) holds the latest reading of each metric, 60 readings of
-history, and today's traffic. `sample()` asks the samplers; `record(…)` applies a round of
+history, today's traffic, and — while the CPU dropdown is open — the CPU details. It is
+told which dropdown is open (`detailMetric`), takes the details straight away when the CPU
+one opens, and again half a second later so the clock speed, a difference between two
+readings, does not wait a whole interval. `sample()` asks the samplers; `record(…)` applies a round of
 readings, and is the seam the tests and the screenshot generator use to feed known values.
 
 **The status items** — one per `Metric`, each owned by a `StatusItemController` in
@@ -91,10 +100,25 @@ fast connection, every few seconds. `NET_RT_IFLIST2` returns `if_data64`.
 and then through Wi-Fi; summing every interface would count it twice. The app reads the
 interface macOS routes through from the System Configuration store and measures that one.
 
-**App CPU as a share of the machine.** Activity Monitor reports per-core percentages, which
-pass 100% for a busy app. Beside a CPU total of 23%, an app at 150% looks like a bug, so
-the dropdown divides by the core count and the rows add up to the total. One decimal is
-kept below 10%, since on a many-core Mac that is where most apps are.
+**App CPU per core.** Activity Monitor and Stats count 100% as one core kept busy, so a
+busy app passes 100% while the total stays low; the dropdown does the same, so the figures
+can be compared with them directly. One decimal is kept below 10%.
+
+**System processes from `ps`.** An ordinary process may read the CPU time of its own
+user's processes only, which leaves out `WindowServer`, `kernel_task` and every daemon.
+`/bin/ps` is installed setuid root to read them all, so the CPU dropdown runs it — off the
+main thread, with fixed arguments, only while that dropdown is open — and parses its three
+columns. Its percentages are the kernel's own short decaying average, as Stats shows.
+
+**Temperature and clock speed from undocumented interfaces.** Apple silicon has no public
+interface for either. The CPU die sensors answer through IOHID's event-system client, and
+each core reports how long it spent at each clock step through IOReport; the power
+manager's registry entry holds the frequency of each step, in Hz on some chips and kHz on
+others. Neither needs root, which is why they are used rather than `powermetrics`. Both
+are looked up with `dlsym`, so when a macOS update removes one, that figure shows "—" and
+nothing else changes. A cluster's table is the one with as many entries as its cores have
+steps, and clusters are matched to the kinds of core from `sysctl` by speed, slowest first;
+when the counts do not line up, only the all-cores figure is shown.
 
 **Helpers counted under their app.** Safari's web pages, Chrome's renderers and Xcode's
 build tools are separate processes. Each one is attributed to the process macOS holds
