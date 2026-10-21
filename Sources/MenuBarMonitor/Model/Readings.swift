@@ -20,6 +20,17 @@ enum MemoryPressure {
         case .critical: "Critical"
         }
     }
+
+    /// Where the pressure gauge's needle points, 0 at the left end to 1 at the right:
+    /// the middle of the level's band. macOS reports three levels, not a number, so the
+    /// needle does not pretend to more precision than that.
+    var gaugeFraction: Double {
+        switch self {
+        case .normal: 1.0 / 6
+        case .warning: 3.0 / 6
+        case .critical: 5.0 / 6
+        }
+    }
 }
 
 struct MemoryReading {
@@ -33,6 +44,13 @@ struct MemoryReading {
     var pressure: MemoryPressure = .normal
 
     var usedFraction: Double { total > 0 ? min(Double(used) / Double(total), 1) : 0 }
+    /// What is not counted as used, the "Free" Stats shows: it includes cached files,
+    /// which macOS gives back the moment something needs the room.
+    var free: UInt64 { total > used ? total - used : 0 }
+
+    func fraction(of part: UInt64) -> Double {
+        total > 0 ? Double(part) / Double(total) : 0
+    }
 }
 
 struct NetworkReading {
@@ -50,9 +68,10 @@ struct AppUsage: Identifiable {
     let id: String
     let name: String
     let icon: NSImage?
-    /// Per core, as Activity Monitor counts it: 100% is one core kept busy, so a busy
-    /// app can pass 100% while the machine's total stays low.
-    let cpu: Double
+    /// In the CPU list, per core as Activity Monitor counts it: 100% is one core kept
+    /// busy, so a busy app can pass 100% while the machine's total stays low. In the
+    /// memory list, bytes of physical footprint.
+    let value: Double
 }
 
 /// What the CPU dropdown shows beyond usage. Only read while that dropdown is open,
@@ -68,6 +87,29 @@ struct CPUDetails {
     var processes: [AppUsage] = []
     /// False until the first process list arrives, so the dropdown can say so.
     var processesMeasured = false
+}
+
+/// What the memory dropdown shows beyond the breakdown. Only read while it is open.
+struct MemoryDetails {
+    var processes: [AppUsage] = []
+    var processesMeasured = false
+}
+
+/// Says when something expensive is due again: at most once per `interval`.
+struct Throttle {
+    let interval: TimeInterval
+    private var last: Date?
+
+    init(interval: TimeInterval) { self.interval = interval }
+
+    mutating func isDue(now: Date = Date()) -> Bool {
+        if let last, now.timeIntervalSince(last) < interval { return false }
+        last = now
+        return true
+    }
+
+    /// The next `isDue` answers yes, whenever it is asked.
+    mutating func reset() { last = nil }
 }
 
 /// Average clock speeds since the previous reading, in MHz.

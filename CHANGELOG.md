@@ -6,6 +6,24 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-19
+
+### Added
+
+- **The memory dropdown shows much more**, laid out like Stats: a dial for macOS's memory
+  pressure, a ring of memory used split into app, wired and compressed, a minute of
+  history, the breakdown as a bar with free memory and swap, and the eight apps using the
+  most memory, system processes included. Apps are measured by physical footprint, the
+  figure in Activity Monitor's Memory column, from `top`, which runs only while the
+  dropdown is open — when it opens and every ten seconds after — since one run costs
+  about 0.6 s of CPU.
+
+### Changed
+
+- **Processes that are not part of an app are named in full**, from their executable,
+  in both process lists: `com.apple.Virtualization.VirtualMachine` rather than the first
+  sixteen characters of it.
+
 ## [1.2.0] — 2026-10-19
 
 ### Added
@@ -58,7 +76,8 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/rwijnen/menu-bar-monitor/releases/tag/v1.0.0

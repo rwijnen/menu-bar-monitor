@@ -46,6 +46,17 @@ enum Format {
         return "\(number) \(units[unit])"
     }
 
+    /// Binary units, two decimals in GB and one in MB, as Stats writes them:
+    /// "18.14 GB", "850.7 MB".
+    static func memory(_ bytes: Double) -> String {
+        let mib = max(bytes, 0) / 1_048_576
+        if mib >= 1023.995 { return String(format: "%.2f GB", mib / 1024) }
+        if mib >= 1 { return String(format: "%.1f MB", mib) }
+        return String(format: "%.0f KB", max(bytes, 0) / 1024)
+    }
+
+    static func memory(_ bytes: UInt64) -> String { memory(Double(bytes)) }
+
     static func temperature(_ celsius: Double?) -> String {
         celsius.map { "\(Int($0.rounded()))°C" } ?? "—"
     }

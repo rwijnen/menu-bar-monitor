@@ -15,6 +15,13 @@ enum Palette {
     static let coreGroups = [cpu, Color(hex: 0xEF9F27), Color(hex: 0x1D9E75)]
 
     static func coreGroup(_ index: Int) -> Color { coreGroups[index % coreGroups.count] }
+
+    // The memory dropdown's: the breakdown of what is used, and the pressure dial's
+    // calm band.
+    static let appMemory = memory
+    static let wiredMemory = gauge
+    static let compressedMemory = system
+    static let normal = Color(hex: 0x639922)
 }
 
 extension Color {

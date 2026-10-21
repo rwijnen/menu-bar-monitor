@@ -15,6 +15,9 @@ flowchart TD
     S --> N["NetworkSampler<br/>sysctl NET_RT_IFLIST2,<br/>SCDynamicStore"]
     C & M & N --> R["MetricsStore.record(…)<br/>current values + a minute of history"]
     S -->|"only while the CPU<br/>dropdown is open"| D["CPU details"]
+    S -->|"only while the memory dropdown<br/>is open, every 10 s"| Mt["ProcessSampler<br/>/usr/bin/top"]
+    Mt --> RM["MetricsStore.record(memoryDetails:)"]
+    RM -->|"@Observable"| P
     D --> Th["TemperatureSampler<br/>IOHID die sensors"]
     D --> F["FrequencySampler<br/>IOReport + pmgr tables"]
     D --> L["SystemInfo<br/>load average, uptime"]
@@ -103,6 +106,16 @@ interface macOS routes through from the System Configuration store and measures 
 **App CPU per core.** Activity Monitor and Stats count 100% as one core kept busy, so a
 busy app passes 100% while the total stays low; the dropdown does the same, so the figures
 can be compared with them directly. One decimal is kept below 10%.
+
+**Memory per app from `top`, every ten seconds.** Activity Monitor's Memory column is a
+process's physical footprint. `ps` has no such column — its resident size counts shared
+memory in every process that maps it, and ranks the list differently — and an ordinary
+process can read the footprint of its own user's processes only. `/usr/bin/top` is setuid
+root and reports it for all of them, but one run costs about 0.6 s of CPU on a Mac with
+seven hundred processes. So it runs when the memory dropdown opens and then every ten
+seconds (`Throttle`), off the main thread; footprints move slowly enough for that.
+Processes outside any app are named from their executable's path, because `top` cuts
+names to sixteen characters.
 
 **System processes from `ps`.** An ordinary process may read the CPU time of its own
 user's processes only, which leaves out `WindowServer`, `kernel_task` and every daemon.

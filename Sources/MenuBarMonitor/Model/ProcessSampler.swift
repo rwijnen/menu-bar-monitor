@@ -1,49 +1,70 @@
 import AppKit
 import Darwin
 
-/// Finds the apps using the most CPU, system processes included.
+/// Finds the apps using the most CPU or memory, system processes included.
 ///
 /// An ordinary process may read only its own user's processes, which would leave out
-/// `WindowServer`, `kernel_task` and every other daemon. `/bin/ps` is installed setuid
-/// root to read all of them, so the list comes from running it — only while the CPU
-/// dropdown is open, since nothing else shows it. Its percentages are per core, as in
-/// Activity Monitor, and are averaged by the kernel over the last few seconds.
+/// `WindowServer`, `kernel_task` and every other daemon. `/bin/ps` and `/usr/bin/top`
+/// are installed setuid root to read all of them, so the lists come from running them —
+/// only while the matching dropdown is open, since nothing else shows them.
 ///
 /// Helper processes are counted under the app responsible for them (Safari's web
-/// content, Chrome's renderers, Xcode's build tools), so the list reads as apps.
+/// content, Chrome's renderers, Xcode's build tools), so the lists read as apps.
 @MainActor
 final class ProcessSampler {
-    private let grouper = AppGrouper()
-    private var isRunning = false
+    enum Measure {
+        /// Per core, as Activity Monitor counts it, from `ps`: the kernel's own short
+        /// decaying average.
+        case cpu
+        /// Physical footprint in bytes, from `top` — the figure Activity Monitor's Memory
+        /// column shows. `ps` only knows resident size, which counts shared memory in
+        /// every process that maps it and ranks the list quite differently.
+        case memory
+    }
 
-    /// Runs `ps` off the main thread and hands back the busiest `limit` apps on it.
-    /// Grouping happens back on the main thread, where the app lookups are cached.
-    func read(limit: Int, completion: @escaping @MainActor ([AppUsage]) -> Void) {
-        guard !isRunning else { return }
-        isRunning = true
+    private let grouper = AppGrouper()
+    private var running: Set<Measure> = []
+
+    /// Runs the tool off the main thread and hands back the top `limit` apps by
+    /// `measure`. Grouping happens back on the main thread, where lookups are cached.
+    func read(_ measure: Measure, limit: Int,
+              completion: @escaping @MainActor ([AppUsage]) -> Void) {
+        guard !running.contains(measure) else { return }
+        running.insert(measure)
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let entries = ProcessList.parse(Self.runPS() ?? "")
+            let entries = Self.entries(for: measure)
             Task { @MainActor in
                 guard let self else { return }
-                self.isRunning = false
-                self.grouper.forget(allBut: Set(entries.map(\.pid)))
+                self.running.remove(measure)
                 completion(ProcessList.top(entries, limit: limit,
                                            group: self.grouper.group(for:)))
             }
         }
     }
 
-    private nonisolated static func runPS() -> String? {
-        let ps = Process()
-        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-        // Every process; just the executable's name; no header row.
-        ps.arguments = ["-Aceo", "pid=,pcpu=,comm="]
+    private nonisolated static func entries(for measure: Measure) -> [ProcessList.Entry] {
+        switch measure {
+        case .cpu:
+            // Every process; just the executable's name; no header row.
+            return ProcessList.parsePS(run("/bin/ps", ["-Aceo", "pid=,pcpu=,comm="]) ?? "")
+        case .memory:
+            // One sample of every process, name last because it may contain spaces.
+            // About 0.6 s of CPU on a Mac with 700 processes, hence the slower cadence.
+            return ProcessList.parseTop(run("/usr/bin/top",
+                                            ["-l", "1", "-stats", "pid,mem,command"]) ?? "")
+        }
+    }
+
+    private nonisolated static func run(_ path: String, _ arguments: [String]) -> String? {
+        let tool = Process()
+        tool.executableURL = URL(fileURLWithPath: path)
+        tool.arguments = arguments
         let output = Pipe()
-        ps.standardOutput = output
-        ps.standardError = FileHandle.nullDevice
-        do { try ps.run() } catch { return nil }
+        tool.standardOutput = output
+        tool.standardError = FileHandle.nullDevice
+        do { try tool.run() } catch { return nil }
         let data = output.fileHandleForReading.readDataToEndOfFile()
-        ps.waitUntilExit()
+        tool.waitUntilExit()
         return String(decoding: data, as: UTF8.self)
     }
 }
@@ -51,37 +72,70 @@ final class ProcessSampler {
 enum ProcessList {
     struct Entry: Equatable {
         let pid: pid_t
-        let cpu: Double
+        /// Per-core CPU percentage, or bytes of memory.
+        let value: Double
         let name: String
     }
 
-    /// Lines of "  414  58.2 WindowServer". Names may contain spaces ("Claude Helper
-    /// (Renderer)"), so everything after the second column is the name.
-    static func parse(_ output: String) -> [Entry] {
-        output.split(separator: "\n").compactMap { line in
-            let fields = line.split(separator: " ", maxSplits: 2,
-                                    omittingEmptySubsequences: true)
-            guard fields.count == 3, let pid = pid_t(fields[0]),
-                  let cpu = Double(fields[1].replacingOccurrences(of: ",", with: "."))
-            else { return nil }
-            return Entry(pid: pid, cpu: cpu, name: String(fields[2]))
+    /// `ps` lines of "  414  58.2 WindowServer". Names may contain spaces ("Claude
+    /// Helper (Renderer)"), so everything after the second column is the name.
+    static func parsePS(_ output: String) -> [Entry] {
+        rows(output).compactMap { pid, value, name in
+            Double(value.replacingOccurrences(of: ",", with: "."))
+                .map { Entry(pid: pid, value: $0, name: name) }
         }
     }
 
-    /// Adds up each app's processes and keeps the busiest `limit`, busiest first. Idle
-    /// processes are skipped before grouping, so most are never looked up at all.
+    /// `top` lines of "414    2013M WindowServer", among a header block to skip. Sizes
+    /// are binary (K, M, G) and may carry a trailing "+" or "-" for the direction they
+    /// are moving in.
+    static func parseTop(_ output: String) -> [Entry] {
+        rows(output).compactMap { pid, value, name in
+            bytes(value).map { Entry(pid: pid, value: $0, name: name) }
+        }
+    }
+
+    static func bytes(_ size: String) -> Double? {
+        var text = size.trimmingCharacters(in: CharacterSet(charactersIn: "+-*"))
+        let multiplier: Double
+        switch text.last {
+        case "B": multiplier = 1
+        case "K": multiplier = 1024
+        case "M": multiplier = 1024 * 1024
+        case "G": multiplier = 1024 * 1024 * 1024
+        case "T": multiplier = 1024 * 1024 * 1024 * 1024
+        default: return Double(text)
+        }
+        text.removeLast()
+        return Double(text).map { $0 * multiplier }
+    }
+
+    /// Lines whose first column is a process number, split into three columns.
+    private static func rows(_ output: String) -> [(pid_t, String, String)] {
+        output.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: " ", maxSplits: 2,
+                                    omittingEmptySubsequences: true)
+            guard fields.count == 3, let pid = pid_t(fields[0]) else { return nil }
+            return (pid, String(fields[1]),
+                    fields[2].trimmingCharacters(in: .whitespaces))
+        }
+    }
+
+    /// Adds up each app's processes and keeps the top `limit`, largest first. Processes
+    /// at zero are skipped before grouping, so most are never looked up at all.
     static func top(_ entries: [Entry], limit: Int,
                     group: (Entry) -> AppGroup) -> [AppUsage] {
-        var totals: [String: (group: AppGroup, cpu: Double)] = [:]
-        for entry in entries where entry.cpu > 0 {
+        var totals: [String: (group: AppGroup, value: Double)] = [:]
+        for entry in entries where entry.value > 0 {
             let owner = group(entry)
-            totals[owner.key, default: (owner, 0)].cpu += entry.cpu
+            totals[owner.key, default: (owner, 0)].value += entry.value
         }
         return totals.values
-            .sorted { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.group.name < $1.group.name }
+            .sorted { $0.value != $1.value ? $0.value > $1.value
+                                           : $0.group.name < $1.group.name }
             .prefix(limit)
             .map { AppUsage(id: $0.group.key, name: $0.group.name, icon: $0.group.icon,
-                            cpu: $0.cpu) }
+                            value: $0.value) }
     }
 }
 
@@ -101,13 +155,16 @@ final class AppGrouper {
         return unsafeBitCast(symbol, to: ResponsiblePID.self)
     }()
 
-    private var groups: [pid_t: AppGroup] = [:]
+    private var groups: [pid_t: (name: String, group: AppGroup)] = [:]
     private var iconsByPath: [String: NSImage] = [:]
 
     /// The app macOS holds responsible for the process, then the app bundle its
-    /// executable lives in, and failing both the process on its own.
+    /// executable lives in, and failing both the process on its own — named after its
+    /// executable, since `top` cuts names to 16 characters.
     func group(for entry: ProcessList.Entry) -> AppGroup {
-        if let cached = groups[entry.pid] { return cached }
+        // Keyed by number and name together: a number reused by a new process is
+        // looked up again.
+        if let cached = groups[entry.pid], cached.name == entry.name { return cached.group }
         let owner = entry.pid > 0 ? (responsiblePID?(entry.pid) ?? entry.pid) : entry.pid
         let ownerPID = owner > 0 ? owner : entry.pid
         let group: AppGroup
@@ -121,15 +178,12 @@ final class AppGrouper {
             let name = URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
             group = AppGroup(key: appPath, name: name, icon: icon(forAppAt: appPath))
         } else {
-            group = AppGroup(key: "process:\(entry.name)", name: entry.name, icon: nil)
+            let name = executablePath(of: entry.pid)
+                .map { URL(fileURLWithPath: $0).lastPathComponent } ?? entry.name
+            group = AppGroup(key: "process:\(name)", name: name, icon: nil)
         }
-        groups[entry.pid] = group
+        groups[entry.pid] = (entry.name, group)
         return group
-    }
-
-    /// Drops processes that have exited, so a reused process number is looked up again.
-    func forget(allBut running: Set<pid_t>) {
-        groups = groups.filter { running.contains($0.key) }
     }
 
     private func icon(forAppAt path: String) -> NSImage {

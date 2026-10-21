@@ -182,21 +182,21 @@ struct ProcessListTests {
             0   3.1 kernel_task
         not a process line
         """
-        #expect(ProcessList.parse(output) == [
-            .init(pid: 414, cpu: 58.2, name: "WindowServer"),
-            .init(pid: 43420, cpu: 8, name: "Claude Helper (Renderer)"),
-            .init(pid: 0, cpu: 3.1, name: "kernel_task"),
+        #expect(ProcessList.parsePS(output) == [
+            .init(pid: 414, value: 58.2, name: "WindowServer"),
+            .init(pid: 43420, value: 8, name: "Claude Helper (Renderer)"),
+            .init(pid: 0, value: 3.1, name: "kernel_task"),
         ])
     }
 
     @Test("an app's processes are added up, busiest app first, idle ones skipped")
     func top() {
         let entries: [ProcessList.Entry] = [
-            .init(pid: 1, cpu: 6.9, name: "Claude Helper"),
-            .init(pid: 2, cpu: 6.1, name: "Claude Helper (Renderer)"),
-            .init(pid: 3, cpu: 47.9, name: "WindowServer"),
-            .init(pid: 4, cpu: 0, name: "idle daemon"),
-            .init(pid: 5, cpu: 2.0, name: "Claude"),
+            .init(pid: 1, value: 6.9, name: "Claude Helper"),
+            .init(pid: 2, value: 6.1, name: "Claude Helper (Renderer)"),
+            .init(pid: 3, value: 47.9, name: "WindowServer"),
+            .init(pid: 4, value: 0, name: "idle daemon"),
+            .init(pid: 5, value: 2.0, name: "Claude"),
         ]
         var looked: [pid_t] = []
         let usage = ProcessList.top(entries, limit: 8) { entry in
@@ -205,14 +205,14 @@ struct ProcessListTests {
             return AppGroup(key: app, name: app, icon: nil)
         }
         #expect(usage.map(\.name) == ["WindowServer", "Claude"])
-        #expect(abs(usage[1].cpu - 15) < 0.001)
+        #expect(abs(usage[1].value - 15) < 0.001)
         #expect(!looked.contains(4))
     }
 
     @Test("only the busiest few are kept")
     func limit() {
         let entries = (1...20).map {
-            ProcessList.Entry(pid: pid_t($0), cpu: Double($0), name: "p\($0)")
+            ProcessList.Entry(pid: pid_t($0), value: Double($0), name: "p\($0)")
         }
         let usage = ProcessList.top(entries, limit: 8) {
             AppGroup(key: $0.name, name: $0.name, icon: nil)
@@ -227,11 +227,11 @@ struct ProcessListTests {
         // Held for the duration: the sampler lets go of a list nobody is waiting for.
         let sampler = ProcessSampler()
         let apps = await withCheckedContinuation { continuation in
-            sampler.read(limit: 200) { continuation.resume(returning: $0) }
+            sampler.read(.cpu, limit: 200) { continuation.resume(returning: $0) }
         }
         #expect(!apps.isEmpty)
-        #expect(apps.allSatisfy { $0.cpu > 0 && !$0.name.isEmpty })
-        #expect(apps.map(\.cpu) == apps.map(\.cpu).sorted(by: >))
+        #expect(apps.allSatisfy { $0.value > 0 && !$0.name.isEmpty })
+        #expect(apps.map(\.value) == apps.map(\.value).sorted(by: >))
     }
 }
 

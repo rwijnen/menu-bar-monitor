@@ -51,7 +51,7 @@ click anywhere else closes it. Hold ⌘ and drag any of them to put them in anot
 
 | CPU | Memory | Network |
 |---|---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: gauges for temperature, usage and clock speed, a one-minute graph, a bar per core, the details, load average and frequency, and the eight busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: memory used of 16 GB, its pressure, the app, wired and compressed breakdown, and swap"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: gauges for temperature, usage and clock speed, a one-minute graph, a bar per core, the details, load average and frequency, and the eight busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: a pressure dial and a ring of memory used, a one-minute graph, the app, wired, compressed and free breakdown with swap, and the eight apps using the most memory"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
 
 - **CPU** — temperature, usage and clock speed as three gauges; a minute of history and
   a bar for each core, coloured by kind (Performance and Super cores on an M5 Pro);
@@ -60,8 +60,11 @@ click anywhere else closes it. Hold ⌘ and drag any of them to put them in anot
   apps, system processes included. A helper process counts under the app responsible
   for it, so Safari's web pages count as Safari and a build counts as Xcode. App figures
   are per core, as in Activity Monitor: 100% is one core kept busy.
-- **Memory** — what Activity Monitor calls *Memory Used*: app, wired and compressed
-  memory, out of what is installed. Then macOS's own pressure level, and swap.
+- **Memory** — macOS's pressure level as a dial, and what Activity Monitor calls
+  *Memory Used* as a ring split into app, wired and compressed memory; a minute of
+  history; the same breakdown as a bar, with free memory and swap; and the eight apps
+  using the most, system processes included, by the physical footprint Activity
+  Monitor's Memory column shows.
 - **Network** — download and upload on the interface macOS is routing through, its name
   and address, and today's totals, which survive a restart and start again at midnight.
 
@@ -92,7 +95,8 @@ system's own login items.
 | Memory pressure | `kern.memorystatus_vm_pressure_level` |
 | Swap | `vm.swapusage` |
 | Network | 64-bit byte counters from `sysctl NET_RT_IFLIST2`, on the primary interface only |
-| Busiest apps | `/bin/ps`, which can see every user's processes, grouped under the responsible app |
+| Busiest apps by CPU | `/bin/ps`, which can see every user's processes, grouped under the responsible app |
+| Busiest apps by memory | `/usr/bin/top`'s physical footprint, likewise for every user, grouped the same way |
 
 The readings were checked against `top`, `vm_stat`, `sysctl` and `uptime` on the machine
 it was built on, and the temperature against Stats. Temperature and clock speed have no public interface on Apple
@@ -111,9 +115,11 @@ That figure is what is left after one measurement changed the code. The first ve
 its graphs with SwiftUI's `Canvas` and used 94 MB — 69 MB of it GPU memory, because
 `Canvas` brings up Metal even for a graph 32 points wide. The graphs are plain shapes now.
 
-The CPU dropdown's extras — temperature, clock speed, load and the process list — are read
-only while that dropdown is open. The process list means running `ps` once a reading,
-about 20 ms of CPU each time; with the dropdown closed it never runs.
+The CPU and memory dropdowns' extras are read only while that dropdown is open. The CPU
+process list means running `ps` once a reading, about 20 ms of CPU each time. The memory
+list comes from `top`, which costs about 0.6 s of CPU a run, so it runs when the memory
+dropdown opens and then every ten seconds while it stays open. With the dropdowns closed
+neither ever runs.
 
 ## Why it is safe to run
 
@@ -123,9 +129,9 @@ change to:
 - **It never goes online.** There is no networking code. The network graph reads the
   byte counters the kernel already keeps; it does not send anything.
 - **It needs no privileges of its own.** No root helper, no kernel extension, no
-  entitlements, no permission prompts. To list other users' processes it runs `/bin/ps`,
-  which macOS ships with that right, with fixed arguments and only while the CPU dropdown
-  is open.
+  entitlements, no permission prompts. To list other users' processes it runs `/bin/ps`
+  and `/usr/bin/top`, which macOS ships with that right, with fixed arguments and only
+  while the CPU or memory dropdown is open.
 - **It writes only its own preferences** — your settings and today's traffic totals.
 
 More in [SECURITY.md](SECURITY.md), including what is accepted rather than solved.

@@ -88,3 +88,92 @@ struct CoreBars: View {
         return Palette.coreGroup(group)
     }
 }
+
+/// Memory pressure as a dial: green, amber and red bands across a half circle, and a
+/// needle in the band macOS reports.
+struct PressureGauge: View {
+    var pressure: MemoryPressure
+    var width: CGFloat = 88
+    var lineWidth: CGFloat = 7
+
+    private static let bands: [(from: Double, to: Double, color: Color)] = [
+        (0, 1.0 / 3, Palette.normal),
+        (1.0 / 3, 2.0 / 3, Palette.warning),
+        (2.0 / 3, 1, Palette.critical),
+    ]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                ForEach(Array(Self.bands.enumerated()), id: \.offset) { _, band in
+                    // A circle's trim runs clockwise from three o'clock, so its top half
+                    // is 0.5 to 1, left to right.
+                    // Inset by half the line, so the band stays inside the clipped frame.
+                    Circle()
+                        .inset(by: lineWidth / 2)
+                        .trim(from: 0.5 + band.from / 2, to: 0.5 + band.to / 2)
+                        .stroke(band.color, style: StrokeStyle(lineWidth: lineWidth))
+                }
+                Needle(fraction: pressure.gaugeFraction)
+                    .stroke(Color.primary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                Circle()
+                    .fill(Color.primary)
+                    .frame(width: 7, height: 7)
+            }
+            .frame(width: width, height: width)
+            // Only the top half is drawn; the lower half's space is given back.
+            .frame(height: width / 2 + lineWidth, alignment: .top)
+            .clipped()
+
+            Text(pressure.title)
+                .font(.system(size: 13, weight: .semibold))
+            Text("Pressure")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Memory pressure: \(pressure.title)")
+    }
+
+    private struct Needle: Shape {
+        var fraction: Double
+
+        func path(in rect: CGRect) -> Path {
+            let centre = CGPoint(x: rect.midX, y: rect.midY)
+            let length = rect.width / 2 * 0.72
+            // 0 points left, 1 points right, through the top; screen y grows downwards.
+            let angle = Double.pi * (1 - min(max(fraction, 0), 1))
+            var path = Path()
+            path.move(to: centre)
+            path.addLine(to: CGPoint(x: centre.x + length * cos(angle),
+                                     y: centre.y - length * sin(angle)))
+            return path
+        }
+    }
+}
+
+/// Parts of a whole side by side in one bar, the rest left as the track.
+struct StackedBar: View {
+    struct Part {
+        var fraction: Double
+        var color: Color
+    }
+
+    var parts: [Part]
+
+    var body: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    Rectangle()
+                        .fill(part.color)
+                        .frame(width: proxy.size.width * min(max(part.fraction, 0), 1))
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .background(Color.primary.opacity(0.12))
+        .clipShape(Capsule())
+        .frame(height: 8)
+    }
+}
