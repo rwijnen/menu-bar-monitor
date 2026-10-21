@@ -12,7 +12,7 @@ flowchart TD
     T["Timer<br/>every 1, 2 or 5 s"] --> S["MetricsStore.sample()"]
     S --> C["CPUSampler<br/>host_processor_info"]
     S --> M["MemorySampler<br/>host_statistics64, vm.swapusage,<br/>memory pressure level"]
-    S --> N["NetworkSampler<br/>sysctl NET_RT_IFLIST2,<br/>SCDynamicStore"]
+    S --> N["NetworkSampler<br/>interface MIB,<br/>SCDynamicStore"]
     C & M & N --> R["MetricsStore.record(…)<br/>current values + a minute of history"]
     S -->|"only while the CPU<br/>dropdown is open"| D["CPU details"]
     S -->|"only while the memory dropdown<br/>is open, every 10 s"| Mt["ProcessSampler<br/>/usr/bin/top"]
@@ -101,9 +101,32 @@ every item to its left — would shuffle sideways each time a digit changed widt
 switches unit before any rate outgrows that frame, and a test sweeps rates from bytes to
 terabytes to keep it so.
 
-**64-bit network counters from `sysctl`, not `getifaddrs`.** `getifaddrs` exposes each
-interface's byte counts in `if_data`, whose fields are 32-bit and wrap every 4 GB — on a
-fast connection, every few seconds. `NET_RT_IFLIST2` returns `if_data64`.
+**64-bit network counters from the interface MIB.** `getifaddrs` exposes each interface's
+byte counts in `if_data`, whose fields are 32-bit and wrap every 4 GB — on a fast
+connection, every few seconds. `NET_RT_IFLIST2` returns `if_data64` and was used first,
+but on an M5 Pro under macOS 27 its Wi-Fi download counter still wrapped at 4 GB: it read
+1.16 GB where `netstat -ib` said 5.46. The interface MIB (`IFMIB_IFDATA`), which `netstat`
+reads, has the full count.
+
+**A connection status that sends nothing.** Stats shows latency, jitter and a
+connectivity history by pinging a server every few seconds. This app does not go online,
+so the history is of `NWPathMonitor`'s answer — whether macOS itself has a usable path —
+recorded at every reading, and there is no latency. A Wi-Fi network with a dead router
+still counts as connected; the dropdown says "connection", not "internet".
+
+**Per-app traffic from `nettop`.** `nettop` counts every process's bytes in and out
+without privileges and costs about 10 ms a run, so it runs at every reading while the
+network dropdown is open. Rates are the difference between two runs; the first run on
+opening is only a baseline, and a second follows a second later.
+
+**The Wi-Fi name behind a button.** macOS gives a network's name only to apps allowed to
+use Location Services, since it hints at where you are. The dropdown offers to ask rather
+than asking at launch, and the app never starts location updates.
+
+**The hardware address from System Configuration.** `getifaddrs` gives ordinary apps a
+placeholder, 02:00:00:00:00:00. `SCNetworkInterfaceGetHardwareAddressString` gives the
+address the hardware was made with — what Stats shows. With a private Wi-Fi address on,
+the network sees a different one.
 
 **The primary interface only.** With a VPN up, the same traffic passes through the tunnel
 and then through Wi-Fi; summing every interface would count it twice. The app reads the

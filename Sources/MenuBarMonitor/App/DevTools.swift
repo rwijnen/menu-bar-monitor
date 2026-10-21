@@ -29,7 +29,10 @@ enum DevTools {
     /// run loop rather than sleeping, because the process list arrives on it.
     private static func printSamples() {
         let store = MetricsStore(settings: AppSettings())
-        defer { printMemoryProcesses(store) }
+        defer {
+            printMemoryProcesses(store)
+            printNetworkDetails(store)
+        }
         store.detailMetric = .cpu
         for _ in 0..<4 {
             RunLoop.main.run(until: Date().addingTimeInterval(1))
@@ -64,6 +67,25 @@ enum DevTools {
             ---
             """)
         }
+    }
+
+    /// The network dropdown's extras: the connection as macOS sees it, the Wi-Fi name if
+    /// allowed, and per-app traffic over about two seconds.
+    private static func printNetworkDetails(_ store: MetricsStore) {
+        store.detailMetric = .network
+        RunLoop.main.run(until: Date().addingTimeInterval(2.5))
+        let network = store.network, details = store.networkDetails
+        print("""
+        net connected \(details.isConnected) via \(details.connectionType ?? "-"), \
+        up \(network.isUp), hardware \(network.hardwareAddress ?? "-"), \
+        since boot ↓ \(Format.traffic(network.totalDownloaded)) \
+        ↑ \(Format.traffic(network.totalUploaded)), wifi \(details.wifi), \
+        history \(store.connectionHistory.entries.count) readings
+        """)
+        let apps = details.processes.map {
+            "\($0.name) ↓\(Format.rate($0.downloadPerSecond)) ↑\(Format.rate($0.uploadPerSecond))"
+        }
+        print("network apps \(apps.joined(separator: ", "))")
     }
 
     /// The memory dropdown's list, which comes from `top` and takes about a second.
@@ -156,7 +178,10 @@ enum DevTools {
                                       swapUsed: gib * 2 / 5, pressure: .normal),
                 network: NetworkReading(downloadPerSecond: down, uploadPerSecond: up,
                                         interfaceName: "en0", interfaceDisplayName: "Wi-Fi",
-                                        ipAddress: "192.168.1.20"),
+                                        ipAddress: "192.168.1.20",
+                                        hardwareAddress: "a2:4f:1c:9e:30:7b", isUp: true,
+                                        totalDownloaded: 1_770_000_000,
+                                        totalUploaded: 443_000_000),
                 now: now)
         }
 
@@ -195,6 +220,25 @@ enum DevTools {
                      icon: path.map { NSWorkspace.shared.icon(forFile: $0) }, value: size * mib)
         }
         store.record(memoryDetails: MemoryDetails(processes: memoryHogs, processesMeasured: true))
+
+        // A connection that dropped for a few readings a while ago.
+        var history = ConnectionHistory()
+        for index in 0..<ConnectionHistory.length { history.record(!(31...33).contains(index)) }
+        store.record(connectionHistory: history)
+        let talkers = [
+            ("Safari", "/Applications/Safari.app", 1_020_000.0, 38_000.0),
+            ("Music", "/System/Applications/Music.app", 310_000.0, 4_000.0),
+            ("Mail", "/System/Applications/Mail.app", 42_000.0, 61_000.0),
+            ("Xcode", "/Applications/Xcode.app", 18_000.0, 2_000.0),
+            ("mDNSResponder", nil, 3_000.0, 1_000.0),
+        ].map { name, path, down, up in
+            NetworkAppUsage(id: name, name: name,
+                            icon: path.map { NSWorkspace.shared.icon(forFile: $0) },
+                            downloadPerSecond: down, uploadPerSecond: up)
+        }
+        store.record(networkDetails: NetworkDetails(
+            isConnected: true, connectionType: "Wi-Fi", wifi: .name("Home"),
+            processes: talkers, processesMeasured: true))
         return store
     }
 

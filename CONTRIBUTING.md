@@ -21,13 +21,15 @@ merged:
 
 1. **It never goes online.** Not at build time and not at run time. Every figure it shows
    is a counter the kernel already keeps on your Mac; the network graph reads byte
-   counters, it does not send anything. No update check, no telemetry, no remote images
-   or fonts. A feature that opens a connection will not be merged.
+   counters and the connection status is macOS's own, so nothing is sent. No update
+   check, no telemetry, no latency test, no remote images or fonts. A feature that opens
+   a connection will not be merged.
 2. **It needs no privileges of its own.** No root helper, no kernel extension, no
-   entitlements, no permission prompts. The one exception to reading only what an ordinary
-   process may is the process lists, which come from `/bin/ps` and `/usr/bin/top` —
-   installed setuid root to see every user's processes — run with fixed arguments while
-   the CPU or memory dropdown is open.
+   entitlements. The process lists come from `/bin/ps` and `/usr/bin/top` — installed
+   setuid root to see every user's processes — and `/usr/bin/nettop`, run with fixed
+   arguments while the matching dropdown is open. The one permission prompt is Location
+   Services, shown only when the user clicks to see the Wi-Fi network's name; nothing
+   may ask for a permission by itself.
 3. **It costs less than what it measures.** About 18 MB of memory and under 1% CPU at the
    default two-second interval. A change that raises either needs a measurement in the
    pull request and a good reason (see [Measuring the cost](#measuring-the-cost)).
@@ -57,7 +59,10 @@ Sources/MenuBarMonitor/
   Model/       pure logic, no UI, all of it tested
     CPUSampler        per-core tick counters → usage, from host_processor_info
     MemorySampler     host_statistics64, swap and the pressure level
-    NetworkSampler    64-bit byte counters on the primary interface, its name and address
+    NetworkSampler    64-bit byte counters on the primary interface, its name, status and
+                      addresses
+    ConnectionMonitor macOS's own view of whether it has a connection, and its history
+    WiFiName          the Wi-Fi network's name, behind Location Services permission
     CoreLayout        which cores are which kind (Performance, Super…), from sysctl;
                       SystemInfo: load average, uptime, the chip's name
     TemperatureSampler the CPU die sensors, through undocumented IOHID calls
@@ -171,7 +176,7 @@ Match the surrounding code; there is no formatter to run.
   verbs.
 - `// MARK: -` sections in anything over about 100 lines.
 - **Comments explain why, not what.** The valuable ones say why the obvious approach was
-  not taken — why the network counters come from `sysctl` and not `getifaddrs`, why the
+  not taken — why the network counters come from the interface MIB and not `getifaddrs`, why the
   status item hosts a SwiftUI view rather than using `MenuBarExtra`. Do not narrate the
   code.
 - British spelling in prose, including comments and interface text.

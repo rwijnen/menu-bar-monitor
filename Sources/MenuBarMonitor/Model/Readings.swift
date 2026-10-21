@@ -62,6 +62,12 @@ struct NetworkReading {
     var interfaceName: String?
     var interfaceDisplayName: String?
     var ipAddress: String?
+    var hardwareAddress: String?
+    /// Up and running, as `ifconfig` reports it.
+    var isUp = false
+    /// The interface's own counters, which start at zero when the Mac boots.
+    var totalDownloaded: UInt64 = 0
+    var totalUploaded: UInt64 = 0
 }
 
 struct AppUsage: Identifiable {
@@ -92,6 +98,26 @@ struct CPUDetails {
 /// What the memory dropdown shows beyond the breakdown. Only read while it is open.
 struct MemoryDetails {
     var processes: [AppUsage] = []
+    var processesMeasured = false
+}
+
+/// One app's network traffic since the previous reading.
+struct NetworkAppUsage: Identifiable {
+    let id: String
+    let name: String
+    let icon: NSImage?
+    let downloadPerSecond: Double
+    let uploadPerSecond: Double
+}
+
+/// What the network dropdown shows beyond rates and totals.
+struct NetworkDetails {
+    /// Whether macOS has a usable path to the network, as it reports it. Passive: no
+    /// traffic is sent to find out, so it cannot tell a dead router from a live one.
+    var isConnected = false
+    var connectionType: String?
+    var wifi = WiFiName.State.notAsked
+    var processes: [NetworkAppUsage] = []
     var processesMeasured = false
 }
 

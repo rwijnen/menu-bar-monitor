@@ -22,20 +22,25 @@ What it takes in is what the kernel reports about your own Mac — counters, pro
 interface names — and the threat model is mostly about what it must *not* do with that:
 
 1. **It never goes online.** There is no networking code in the app. The network graph
-   reads byte counters the kernel keeps per interface (`sysctl NET_RT_IFLIST2`); it does
-   not send, probe or resolve anything. No update check, no telemetry.
+   reads byte counters the kernel keeps per interface (the interface MIB, through
+   `sysctl`), and the connection status is macOS's own (`NWPathMonitor`); neither sends,
+   probes or resolves anything. No update check, no telemetry, no latency test.
 2. **It needs no privileges of its own.** No root helper, no kernel extension, no
-   entitlements, and no permission prompts. To list other users' processes it runs two
-   programs macOS installs setuid root for exactly that: `/bin/ps -Aceo pid=,pcpu=,comm=`
-   while the CPU dropdown is open, and `/usr/bin/top -l 1 -stats pid,mem,command` while
-   the memory dropdown is open. They are the only programs the app starts, and their
-   arguments are fixed.
+   entitlements. To list other users' processes it runs `/bin/ps -Aceo pid=,pcpu=,comm=`
+   while the CPU dropdown is open and `/usr/bin/top -l 1 -stats pid,mem,command` while
+   the memory dropdown is open — both installed setuid root for exactly that — and
+   `/usr/bin/nettop -P -L 1 -n -x -J bytes_in,bytes_out`, which needs no privileges,
+   while the network dropdown is open. They are the only programs the app starts, and
+   their arguments are fixed. The one permission it can ask for is Location Services:
+   only when you click to see the Wi-Fi network's name, because macOS gives network
+   names only to apps with it. It never starts location updates, so your location is
+   not read, and the name is shown and goes nowhere else.
 3. **It writes only its own preferences.** Its settings and today's traffic totals, in
    `UserDefaults` under `com.robinwijnen.menubarmonitor`. Nothing else, anywhere.
 
 Process names and app names come from other programs and are shown in the dropdown, so
-they count as input. They are parsed from `ps` and `top` by column, drawn as plain text by
-SwiftUI, and never interpreted.
+they count as input, and so does the Wi-Fi network's name. They are parsed from `ps`,
+`top` and `nettop` by column, drawn as plain text by SwiftUI, and never interpreted.
 
 Findings that would be especially valuable:
 

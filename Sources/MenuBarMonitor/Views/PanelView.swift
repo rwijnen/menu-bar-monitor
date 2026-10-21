@@ -220,43 +220,119 @@ struct PanelView: View {
         }
     }
 
+    // MARK: - Network
+
     private var networkSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: Metric.network.title, symbol: Metric.network.symbol) {
-                HStack(spacing: 8) {
-                    rate("↓", store.network.downloadPerSecond, color: Palette.download)
-                    rate("↑", store.network.uploadPerSecond, color: Palette.upload)
+        let network = store.network
+        let details = store.networkDetails
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(Metric.network.title, systemImage: Metric.network.symbol)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let interface = network.interfaceName {
+                    Text("\(network.interfaceDisplayName ?? interface) (\(interface))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                .font(.system(size: 14, weight: .semibold).monospacedDigit())
             }
-            ZStack {
-                let scale = store.networkScale(last: MetricsStore.historyLength)
-                Sparkline(values: store.downloadHistory, maxValue: scale,
-                          capacity: MetricsStore.historyLength, color: Palette.download)
-                Sparkline(values: store.uploadHistory, maxValue: scale,
-                          capacity: MetricsStore.historyLength, color: Palette.upload,
-                          filled: false)
+
+            HStack {
+                Spacer()
+                bigRate(network.downloadPerSecond, label: "Download", color: Palette.download)
+                Spacer()
+                bigRate(network.uploadPerSecond, label: "Upload", color: Palette.upload)
+                Spacer()
             }
-            .frame(height: 36)
+
+            SectionTitle("Usage history")
+            MirroredGraph(up: store.uploadHistory, down: store.downloadHistory,
+                          capacity: MetricsStore.historyLength)
+                .frame(height: 64)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.05)))
+
+            SectionTitle("Connectivity history")
+            ConnectivityGrid(entries: store.connectionHistory.entries,
+                             capacity: ConnectionHistory.length)
+
+            SectionTitle("Interface")
             VStack(spacing: 3) {
-                if let interface = store.network.interfaceName {
-                    let name = store.network.interfaceDisplayName ?? interface
-                    DetailRow(label: "\(name) (\(interface))",
-                              value: store.network.ipAddress ?? "No IPv4 address")
-                } else {
-                    DetailRow(label: "Not connected", value: "")
-                }
-                let down = Format.traffic(store.downloadedToday)
-                let up = Format.traffic(store.uploadedToday)
-                DetailRow(label: "Today", value: "↓ \(down)  ↑ \(up)")
+                DetailRow(label: "Downloaded today", value: Format.traffic(store.downloadedToday),
+                          dot: Palette.download)
+                DetailRow(label: "Uploaded today", value: Format.traffic(store.uploadedToday),
+                          dot: Palette.upload)
+                DetailRow(label: "Since the Mac started",
+                          value: "↓ \(Format.traffic(network.totalDownloaded))  "
+                              + "↑ \(Format.traffic(network.totalUploaded))")
+                StatusRow(label: "Status", isUp: network.interfaceName != nil && network.isUp)
+                StatusRow(label: "Connection", isUp: details.isConnected,
+                          upText: details.connectionType.map { "Via \($0)" } ?? "Connected",
+                          downText: "None")
+                DetailRow(label: "Hardware address", value: network.hardwareAddress ?? "—")
+                wifiRow(details.wifi)
+            }
+
+            SectionTitle("Address")
+            DetailRow(label: "Local IP", value: network.ipAddress ?? "None")
+
+            SectionTitle("Top processes")
+            networkProcessRows(details)
+        }
+    }
+
+    private func bigRate(_ bytesPerSecond: Double, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(Format.rate(bytesPerSecond))
+                .font(.system(size: 20, weight: .semibold).monospacedDigit())
+            HStack(spacing: 5) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
     }
 
-    private func rate(_ arrow: String, _ value: Double, color: Color) -> some View {
-        HStack(spacing: 2) {
-            Text(arrow).foregroundStyle(color)
-            Text(Format.rate(value))
+    @ViewBuilder
+    private func wifiRow(_ wifi: WiFiName.State) -> some View {
+        switch wifi {
+        case .name(let name):
+            DetailRow(label: "Wi-Fi network", value: name)
+        case .notOnWiFi:
+            EmptyView()
+        case .denied:
+            DetailRow(label: "Wi-Fi network", value: "Location Services off")
+        case .notAsked:
+            HStack {
+                Text("Wi-Fi network").foregroundStyle(.secondary)
+                Spacer()
+                Button("Show the name…") { store.requestWiFiNameAccess() }
+                    .controlSize(.small)
+            }
+            .font(.system(size: 12))
+        }
+    }
+
+    private func networkProcessRows(_ details: NetworkDetails) -> some View {
+        VStack(spacing: 3) {
+            HStack {
+                Spacer()
+                Text("↓").foregroundStyle(Palette.download).frame(width: 64, alignment: .trailing)
+                Text("↑").foregroundStyle(Palette.upload).frame(width: 64, alignment: .trailing)
+            }
+            .font(.system(size: 11, weight: .semibold))
+            ForEach(0..<MetricsStore.processRowCount, id: \.self) { index in
+                if index < details.processes.count {
+                    NetworkAppRow(app: details.processes[index])
+                } else {
+                    let label = index > 0 ? " "
+                        : details.processesMeasured ? "No app is using the network" : "Measuring…"
+                    DetailRow(label: label, value: "")
+                }
+            }
         }
     }
 
@@ -380,5 +456,50 @@ private struct FooterButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+private struct StatusRow: View {
+    let label: String
+    let isUp: Bool
+    var upText = "Up"
+    var downText = "Down"
+
+    var body: some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(isUp ? upText : downText)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(isUp ? Palette.normal : Palette.critical))
+        }
+        .font(.system(size: 12))
+    }
+}
+
+private struct NetworkAppRow: View {
+    let app: NetworkAppUsage
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Group {
+                if let icon = app.icon {
+                    Image(nsImage: icon).resizable()
+                } else {
+                    Image(systemName: "gearshape.2").resizable().scaledToFit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 14, height: 14)
+            Text(app.name).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            Spacer()
+            Text(Format.rate(app.downloadPerSecond)).frame(width: 64, alignment: .trailing)
+            Text(Format.rate(app.uploadPerSecond)).frame(width: 64, alignment: .trailing)
+        }
+        .monospacedDigit()
+        .font(.system(size: 12))
     }
 }

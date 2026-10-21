@@ -24,6 +24,8 @@ final class ProcessSampler {
 
     private let grouper = AppGrouper()
     private var running: Set<Measure> = []
+    private var networkRunning = false
+    private var previousNetwork: (bytes: [pid_t: NetworkProcessList.Entry], time: Date)?
 
     /// Runs the tool off the main thread and hands back the top `limit` apps by
     /// `measure`. Grouping happens back on the main thread, where lookups are cached.
@@ -40,6 +42,42 @@ final class ProcessSampler {
                                            group: self.grouper.group(for:)))
             }
         }
+    }
+
+    /// The apps moving the most data since the previous call, from `nettop`, which
+    /// needs no privileges to count every process's bytes. The first call has nothing
+    /// to compare with, so it only takes a baseline and hands back nil.
+    func readNetwork(limit: Int, now: Date = Date(),
+                     completion: @escaping @MainActor ([NetworkAppUsage]?) -> Void) {
+        guard !networkRunning else { return }
+        networkRunning = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            // Per process, cumulative bytes in and out, one sample, as CSV.
+            let output = Self.run("/usr/bin/nettop",
+                                  ["-P", "-L", "1", "-n", "-x", "-J", "bytes_in,bytes_out"])
+            let entries = NetworkProcessList.parse(output ?? "")
+            Task { @MainActor in
+                guard let self else { return }
+                self.networkRunning = false
+                let current = Dictionary(entries.map { ($0.pid, $0) },
+                                         uniquingKeysWith: { first, _ in first })
+                defer { self.previousNetwork = (current, now) }
+                guard let previous = self.previousNetwork else { return completion(nil) }
+                let rates = NetworkProcessList.rates(
+                    from: previous.bytes, to: current,
+                    seconds: now.timeIntervalSince(previous.time))
+                completion(NetworkProcessList.top(rates, limit: limit) {
+                    self.grouper.group(for: ProcessList.Entry(pid: $0.pid, value: 0,
+                                                              name: $0.name))
+                })
+            }
+        }
+    }
+
+    /// Forgets the previous `nettop` sample, so a dropdown opened again later does not
+    /// average over the whole time it was closed.
+    func resetNetwork() {
+        previousNetwork = nil
     }
 
     private nonisolated static func entries(for measure: Measure) -> [ProcessList.Entry] {
@@ -136,6 +174,77 @@ enum ProcessList {
             .prefix(limit)
             .map { AppUsage(id: $0.group.key, name: $0.group.name, icon: $0.group.icon,
                             value: $0.value) }
+    }
+}
+
+enum NetworkProcessList {
+    struct Entry: Equatable {
+        let pid: pid_t
+        let name: String
+        let bytesIn: UInt64
+        let bytesOut: UInt64
+    }
+
+    struct Rate: Equatable {
+        let pid: pid_t
+        let name: String
+        let downloadPerSecond: Double
+        let uploadPerSecond: Double
+    }
+
+    /// `nettop` lines of "Code Helper (Pl.67467,1285417,780756,": the name, a dot and
+    /// the process number, then bytes in and out. Names are cut to fifteen characters
+    /// and may contain dots, so the number is whatever follows the last one.
+    static func parse(_ output: String) -> [Entry] {
+        output.split(separator: "\n").compactMap { line in
+            var fields = line.split(separator: ",", omittingEmptySubsequences: false)
+            if fields.last?.isEmpty == true { fields.removeLast() }
+            guard fields.count >= 3,
+                  let bytesOut = UInt64(fields[fields.count - 1]),
+                  let bytesIn = UInt64(fields[fields.count - 2])
+            else { return nil }
+            let label = fields.dropLast(2).joined(separator: ",")
+            guard let dot = label.lastIndex(of: "."),
+                  let pid = pid_t(label[label.index(after: dot)...])
+            else { return nil }
+            return Entry(pid: pid, name: String(label[..<dot]), bytesIn: bytesIn,
+                         bytesOut: bytesOut)
+        }
+    }
+
+    /// Bytes per second for each process present in both samples. A process whose
+    /// counts went down is a new one with a reused number, and is skipped.
+    static func rates(from previous: [pid_t: Entry], to current: [pid_t: Entry],
+                      seconds: TimeInterval) -> [Rate] {
+        guard seconds > 0 else { return [] }
+        return current.values.compactMap { now in
+            guard let before = previous[now.pid], before.name == now.name,
+                  now.bytesIn >= before.bytesIn, now.bytesOut >= before.bytesOut
+            else { return nil }
+            return Rate(pid: now.pid, name: now.name,
+                        downloadPerSecond: Double(now.bytesIn - before.bytesIn) / seconds,
+                        uploadPerSecond: Double(now.bytesOut - before.bytesOut) / seconds)
+        }
+    }
+
+    /// Adds up each app's processes and keeps the busiest `limit`, by traffic in both
+    /// directions. Silent processes are left out, rather than listed at 0 KB/s.
+    static func top(_ rates: [Rate], limit: Int,
+                    group: (Rate) -> AppGroup) -> [NetworkAppUsage] {
+        var totals: [String: (group: AppGroup, down: Double, up: Double)] = [:]
+        for rate in rates where rate.downloadPerSecond + rate.uploadPerSecond > 0 {
+            let owner = group(rate)
+            totals[owner.key, default: (owner, 0, 0)].down += rate.downloadPerSecond
+            totals[owner.key, default: (owner, 0, 0)].up += rate.uploadPerSecond
+        }
+        return totals.values
+            .sorted {
+                let left = $0.down + $0.up, right = $1.down + $1.up
+                return left != right ? left > right : $0.group.name < $1.group.name
+            }
+            .prefix(limit)
+            .map { NetworkAppUsage(id: $0.group.key, name: $0.group.name, icon: $0.group.icon,
+                                   downloadPerSecond: $0.down, uploadPerSecond: $0.up) }
     }
 }
 

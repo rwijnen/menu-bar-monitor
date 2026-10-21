@@ -177,3 +177,63 @@ struct StackedBar: View {
         .frame(height: 8)
     }
 }
+
+/// Upload above the line and download below it, each scaled to its own peak, with the
+/// peaks written in the corners — so a large download does not flatten the upload.
+struct MirroredGraph: View {
+    var up: [Double]
+    var down: [Double]
+    var capacity: Int
+
+    var body: some View {
+        let upPeak = up.suffix(capacity).max() ?? 0
+        let downPeak = down.suffix(capacity).max() ?? 0
+        VStack(spacing: 0) {
+            Sparkline(values: up, maxValue: max(upPeak, 10_000) * 1.1, capacity: capacity,
+                      color: Palette.upload, lineWidth: 1.2)
+            Rectangle().fill(Color.primary.opacity(0.2)).frame(height: 0.5)
+            Sparkline(values: down, maxValue: max(downPeak, 10_000) * 1.1, capacity: capacity,
+                      color: Palette.download, lineWidth: 1.2)
+                .scaleEffect(x: 1, y: -1)
+        }
+        .overlay(alignment: .topLeading) { peakLabel(upPeak) }
+        .overlay(alignment: .bottomLeading) { peakLabel(downPeak) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Network history: upload above, download below")
+    }
+
+    private func peakLabel(_ bytesPerSecond: Double) -> some View {
+        Text(Format.rate(bytesPerSecond))
+            .font(.system(size: 9).monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// One square per reading, newest last: green when macOS had a connection, red when it
+/// had none, grey before the first reading.
+struct ConnectivityGrid: View {
+    var entries: [Bool]
+    var capacity: Int
+    var rows = 3
+
+    var body: some View {
+        let columns = capacity / rows
+        let offset = capacity - entries.count
+        VStack(spacing: 2) {
+            ForEach(0..<rows, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(0..<columns, id: \.self) { column in
+                        let index = row * columns + column - offset
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(index < 0 ? Color.primary.opacity(0.1)
+                                  : entries[index] ? Palette.normal : Palette.critical)
+                            .frame(height: 7)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Connected at \(entries.filter { $0 }.count) of the last "
+                            + "\(entries.count) readings")
+    }
+}

@@ -6,6 +6,28 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-20
+
+### Added
+
+- **The network dropdown shows much more**, after Stats: download and upload in large
+  figures; a minute of history with upload above the line and download below, each to
+  its own scale; a connectivity history of the last ninety readings; totals since the
+  Mac started beside today's; the interface's status, hardware address and local IP;
+  and the apps moving the most data, from `nettop`, grouped by app.
+- **The Wi-Fi network's name**, after you click to allow Location Services — macOS gives
+  network names only to apps with that permission. The app never reads your location.
+
+The connection status is macOS's own view of whether it has a connection: the app still
+never goes online, so unlike Stats it shows no latency or jitter.
+
+### Fixed
+
+- **Totals since boot, and rates across a 4 GB boundary.** The Wi-Fi download counter
+  wrapped at 4 GB in the source used before, so every 4 GB downloaded showed one reading
+  of no traffic. The counters now come from the interface MIB, the source `netstat -ib`
+  uses, which has the full 64-bit count.
+
 ## [1.3.1] — 2026-10-19
 
 ### Fixed
@@ -85,7 +107,8 @@ All notable changes to Menu Bar Monitor are recorded here. The format follows
   `--snapshot <dir>` renders every view to PNG from demo data — neither needs
   screen-recording permission.
 
-[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/rwijnen/menu-bar-monitor/compare/v1.1.0...v1.2.0
