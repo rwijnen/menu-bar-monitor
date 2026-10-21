@@ -83,7 +83,8 @@ enum DevTools {
         history \(store.connectionHistory.entries.count) readings
         """)
         let apps = details.processes.map {
-            "\($0.name) ↓\(Format.rate($0.downloadPerSecond)) ↑\(Format.rate($0.uploadPerSecond))"
+            let down = Format.rate($0.downloadPerSecond), up = Format.rate($0.uploadPerSecond)
+            return "\($0.name) ↓\(down) ↑\(up)"
         }
         print("network apps \(apps.joined(separator: ", "))")
     }

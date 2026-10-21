@@ -49,20 +49,25 @@ Each metric is its own item in the menu bar, with its own dropdown: click the CP
 CPU, the network rates for network. Clicking another item moves the dropdown there, and a
 click anywhere else closes it. Hold ⌘ and drag any of them to put them in another order.
 
+They keep the look of the very first mock-up: quiet sections divided by hairlines, a
+heading with the figure that matters most, a graph without a frame, then rows of label
+and value — one colour per metric, purple for CPU, teal for memory and coral and grey for
+network, with red and amber kept for warnings.
+
 | CPU | Memory | Network |
 |---|---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: gauges for temperature, usage and clock speed, a one-minute graph, a bar per core, the details, load average and frequency, and the eight busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: a pressure dial and a ring of memory used, a one-minute graph, the app, wired, compressed and free breakdown with swap, and the eight apps using the most memory"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates, a one-minute graph, the interface and its address, and today's totals"></picture> |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-cpu-dark.png"><img src="Docs/dropdown-cpu-light.png" width="260" alt="The CPU dropdown: usage with a one-minute graph and a bar per core, user and system time, temperature, clock speeds, load average and uptime, and the eight busiest apps"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-memory-dark.png"><img src="Docs/dropdown-memory-light.png" width="260" alt="The memory dropdown: memory used with its breakdown as a bar and a one-minute graph, pressure, app, wired, compressed and free memory and swap, and the eight apps using the most memory"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="Docs/dropdown-network-dark.png"><img src="Docs/dropdown-network-light.png" width="260" alt="The network dropdown: download and upload rates with a one-minute graph, the interface and its address, totals for today and since the Mac started, a connection history, and the apps moving the most data"></picture> |
 
-- **CPU** — temperature, usage and clock speed as three gauges; a minute of history and
-  a bar for each core, coloured by kind (Performance and Super cores on an M5 Pro);
-  system, user and idle time and each kind of core's usage; uptime; the load average
-  over 1, 5 and 15 minutes; the clock speed of each kind of core; and the eight busiest
+- **CPU** — usage with a minute of history and a bar for each core, in tones of purple
+  by kind (Performance and Super cores on an M5 Pro); user and system time and each kind
+  of core's usage; temperature; the clock speed of all cores and of each kind; the load
+  average over 1, 5 and 15 minutes; uptime; and the eight busiest
   apps, system processes included. A helper process counts under the app responsible
   for it, so Safari's web pages count as Safari and a build counts as Xcode. App figures
   are per core, as in Activity Monitor: 100% is one core kept busy.
-- **Memory** — macOS's pressure level as a dial, and what Activity Monitor calls
-  *Memory Used* as a ring split into app, wired and compressed memory; a minute of
-  history; the same breakdown as a bar, with free memory and swap; and the eight apps
+- **Memory** — what Activity Monitor calls *Memory Used*, with a bar split into app,
+  wired and compressed memory in tones of teal and a minute of history; macOS's pressure
+  level; the breakdown in figures, with free memory and swap; and the eight apps
   using the most, system processes included, by the physical footprint Activity
   Monitor's Memory column shows.
 - **Network** — download and upload on the interface macOS is routing through, with a
@@ -107,7 +112,7 @@ system's own login items.
 The readings were checked against `top`, `vm_stat`, `sysctl` and `uptime` on the machine
 it was built on, and the temperature against Stats. Temperature and clock speed have no public interface on Apple
 silicon; the sources used need no root, but Apple does not document them, so a future
-macOS may stop answering and the gauge then shows "—". Only the primary network interface
+macOS may stop answering and that figure then shows "—". Only the primary network interface
 is measured, so traffic through a VPN is not counted twice. The reasoning is in
 [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
